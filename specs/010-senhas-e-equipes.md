@@ -44,6 +44,13 @@
   - rebaixar G1 libera A (`gerente_id = null`);
   - o entregador não consegue alterar o próprio `gerente_id` (profiles continua sem update pelo cliente).
 
+### Acréscimos da implementação (db-supabase)
+- **Nova RPC `meu_gerente()`**: `returns table(id, nome, username)`, com 0 ou 1 linha, `security definer`. Minha conta usa essa função para mostrar o gerente, porque a RLS esconde o perfil do gerente do atendente.
+- **Só atendentes têm gerente.** O trigger recusa `gerente_id` em quem não é `user` (23514, "Só atendentes podem ter um gerente."). Promover um atendente limpa o vínculo dele. `pode_gerir` também exige que o alvo seja `role='user'`.
+- **Gerente desativado:** os atendentes continuam vinculados (só o rebaixamento libera). `set_gerente` e `create` exigem um gerente **ativo**.
+- **Gerente redefinindo a senha de um id inexistente:** a função responde 403, não 404, para não revelar quais ids existem.
+- **Ordem do deploy:** a 0008 entra junto com o front. Sem vínculos, o gerente passa a ver só a si mesmo.
+
 ## Edge Function `admin-users`
 - **Nova ação `set_gerente {user_id, gerente_id | null}`:**
   - só admin;

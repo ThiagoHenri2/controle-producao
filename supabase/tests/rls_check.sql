@@ -4,9 +4,11 @@
 -- (0002, spec 004), RPCs de resumo (0003, spec 005) e nome de categoria
 -- único sem diferenciar maiúsculas (0004) e filtro por categorias nas
 -- RPCs de resumo (0005), papel gerente / gestor (0006, spec 008) e
--- despesas (0007, spec 009: seções 3d, 3e, 4f e trechos de 4d/4e/5/6).
+-- despesas (0007, spec 009: seções 3d, 3e, 4f e trechos de 4d/4e/5/6) e
+-- equipes por gerente (0008, spec 010: setup, 4b, 4f, 4g, 4h e trechos de
+-- 4c/4d/4e/6).
 --
--- Requer as migrations 0001..0007 aplicadas.
+-- Requer as migrations 0001..0008 aplicadas.
 --
 -- Como rodar: cole o arquivo inteiro no SQL Editor do Supabase e execute.
 -- Tudo roda dentro de uma transação e termina em ROLLBACK: nada fica gravado.
@@ -20,13 +22,20 @@
 --   B = 00000000-0000-4000-a000-00000000000b   (vira admin na seção 4)
 --   G = 00000000-0000-4000-a000-00000000000c   gerente ("Maria")
 --   C = 00000000-0000-4000-a000-00000000000d   entregador ("Ana")
+--   H = 00000000-0000-4000-a000-00000000000e   segundo gerente (G2, 0008)
 --   A faz o papel do "João" da spec 008.
 --
--- Obs.: resumo_por_usuario lista TODOS os perfis do banco. Rodando no
--- projeto real, os perfis reais aparecem também; por isso as asserções da
--- seção 4 olham as linhas dos usuários de teste e usam um período antigo
--- (2001-01) onde não deve haver dados reais. As despesas usam 2001-02
--- (resumo_despesas_por_usuario_nomes também lista todos os perfis).
+-- Equipes (0008, spec 010), definidas no setup:
+--   G1 = G  com o atendente A   (A.gerente_id = G)
+--   G2 = H  com o atendente C   (C.gerente_id = H)   ["B de G2" da spec]
+--   B  = sem gerente; vira admin na seção 4.
+--
+-- Obs.: para o ADMIN, resumo_por_usuario lista TODOS os perfis do banco.
+-- Rodando no projeto real, os perfis reais aparecem também; por isso as
+-- asserções do admin olham as linhas dos usuários de teste e usam um
+-- período antigo (2001-01) onde não deve haver dados reais. As despesas
+-- usam 2001-02. Para o GERENTE de teste a lista é exata (ele + atendentes
+-- de teste), pois nenhum perfil real aponta para os ids fixos.
 -- =====================================================================
 
 begin;
@@ -49,13 +58,97 @@ insert into auth.users (
    now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-00000000000d',
    'authenticated', 'authenticated', 'rls_teste_c@entregas.local', '',
+   now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-00000000000e',
+   'authenticated', 'authenticated', 'rls_teste_h@entregas.local', '',
    now(), '{}'::jsonb, '{}'::jsonb, now(), now());
 
 insert into public.profiles (id, username, nome, role, ativo) values
   ('00000000-0000-4000-a000-00000000000a', 'rls_teste_a', 'Teste A', 'user', true),
   ('00000000-0000-4000-a000-00000000000b', 'rls_teste_b', 'Teste B', 'user', true),
   ('00000000-0000-4000-a000-00000000000c', 'rls_teste_g', 'Teste Gerente', 'gerente', true),
-  ('00000000-0000-4000-a000-00000000000d', 'rls_teste_c', 'Teste C', 'user', true);
+  ('00000000-0000-4000-a000-00000000000d', 'rls_teste_c', 'Teste C', 'user', true),
+  ('00000000-0000-4000-a000-00000000000e', 'rls_teste_h', 'Teste Gerente 2', 'gerente', true);
+
+-- Equipes (0008): A é atendente de G (G1); C é atendente de H (G2).
+update public.profiles set gerente_id = '00000000-0000-4000-a000-00000000000c'
+ where id = '00000000-0000-4000-a000-00000000000a';
+update public.profiles set gerente_id = '00000000-0000-4000-a000-00000000000e'
+ where id = '00000000-0000-4000-a000-00000000000d';
+
+-- Regras de gerente_id (0008)
+do $$
+declare
+  v_estado text;
+  v_msg    text;
+begin
+  -- estrutura: FK on delete set null, check gerente_id <> id, índice
+  assert (select confdeltype from pg_constraint
+           where conrelid = 'public.profiles'::regclass
+             and conname = 'profiles_gerente_id_fkey') = 'n',
+    'profiles_gerente_id_fkey deveria ser on delete set null';
+  assert exists (select 1 from pg_constraint
+                  where conrelid = 'public.profiles'::regclass
+                    and conname = 'profiles_gerente_id_check' and contype = 'c'),
+    'profiles_gerente_id_check deveria existir';
+  assert exists (select 1 from pg_indexes
+                  where schemaname = 'public' and indexname = 'profiles_gerente_id_idx'),
+    'índice profiles_gerente_id_idx deveria existir';
+
+  -- gerente_id apontando para quem NÃO é gerente (B, user) => 23514
+  v_estado := null;
+  begin
+    update public.profiles set gerente_id = '00000000-0000-4000-a000-00000000000b'
+     where id = '00000000-0000-4000-a000-00000000000a';
+  exception when others then
+    v_estado := sqlstate; v_msg := sqlerrm;
+  end;
+  assert v_estado = '23514' and v_msg = 'O responsável precisa ser um gerente.',
+    format('gerente_id -> user deveria dar 23514 "O responsável precisa ser um gerente." (veio %s %s)', v_estado, v_msg);
+
+  -- gerente_id inexistente => 23514 (o trigger roda antes da FK)
+  v_estado := null;
+  begin
+    update public.profiles set gerente_id = '00000000-0000-4000-a000-0000000000ff'
+     where id = '00000000-0000-4000-a000-00000000000a';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('gerente_id inexistente deveria dar 23514 (veio %s)', v_estado);
+
+  -- gerente_id = o próprio id => erro (check / trigger)
+  v_estado := null;
+  begin
+    update public.profiles set gerente_id = id
+     where id = '00000000-0000-4000-a000-00000000000a';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('gerente_id = id deveria dar 23514 (veio %s)', v_estado);
+
+  -- só atendente tem gerente: H (gerente) com gerente G => 23514
+  v_estado := null;
+  begin
+    update public.profiles set gerente_id = '00000000-0000-4000-a000-00000000000c'
+     where id = '00000000-0000-4000-a000-00000000000e';
+  exception when others then
+    v_estado := sqlstate; v_msg := sqlerrm;
+  end;
+  assert v_estado = '23514' and v_msg = 'Só atendentes podem ter um gerente.',
+    format('gerente com gerente_id deveria dar 23514 "Só atendentes..." (veio %s %s)', v_estado, v_msg);
+
+  -- insert com gerente_id de quem não é gerente também falha
+  v_estado := null;
+  begin
+    insert into public.profiles (id, username, nome, role, gerente_id)
+    values ('00000000-0000-4000-a000-00000000000a', 'x_dup', 'x', 'user',
+            '00000000-0000-4000-a000-00000000000b');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('insert com gerente_id -> user deveria dar 23514 (veio %s)', v_estado);
+
+  assert (select gerente_id from public.profiles where id = '00000000-0000-4000-a000-00000000000a')
+         = '00000000-0000-4000-a000-00000000000c',
+    'A deveria continuar com gerente G após as tentativas inválidas';
+end $$;
 
 -- check de role (0006): aceita 'gerente', rejeita outros valores
 do $$
@@ -1052,8 +1145,9 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- 4b) Gerente G ("Maria"): vê, lança, edita e exclui para A ("João");
---     altera preço/CRUD das categorias de A; criado_por não é forjável.
+-- 4b) Gerente G ("Maria", G1): vê, lança, edita e exclui para A ("João",
+--     atendente dela); altera preço/CRUD das categorias de A; criado_por
+--     não é forjável. 0008: NÃO vê C (atendente de G2), B, nem G2.
 -- ---------------------------------------------------------------------
 select set_config('request.jwt.claims',
   json_build_object('sub', '00000000-0000-4000-a000-00000000000c', 'role', 'authenticated')::text, true);
@@ -1069,15 +1163,28 @@ begin
   assert public.is_gestor(), 'is_gestor() deveria ser true para gerente';
   assert not public.is_admin(), 'is_admin() deveria ser false para gerente';
 
-  -- vê todos os perfis e os dados de A e C
-  assert (select count(*) from public.profiles where id in (
-            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
-            '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d')) = 4,
-    'gerente deveria ver todos os perfis';
+  -- 0008: vê só ele + o atendente A (não B, não C, não H, nem perfis reais)
+  assert (select count(*) from public.profiles) = 2,
+    format('VAZAMENTO: gerente G1 deveria ver só 2 perfis (G1 e A), viu %s', (select count(*) from public.profiles));
+  assert (select array_agg(id order by id) from public.profiles)
+         = array['00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c']::uuid[],
+    'VAZAMENTO: gerente G1 deveria ver exatamente G1 e A';
+  assert public.pode_gerir('00000000-0000-4000-a000-00000000000a'), 'pode_gerir(A) deveria ser true para G1';
+  assert public.pode_gerir('00000000-0000-4000-a000-00000000000c'), 'pode_gerir(G1) deveria ser true para G1';
+  assert not public.pode_gerir('00000000-0000-4000-a000-00000000000d'), 'VAZAMENTO: pode_gerir(C, de G2) para G1';
+  assert not public.pode_gerir('00000000-0000-4000-a000-00000000000e'), 'VAZAMENTO: pode_gerir(G2) para G1';
+  assert not public.pode_gerir('00000000-0000-4000-a000-00000000000b'), 'VAZAMENTO: pode_gerir(B, sem gerente) para G1';
+  assert not public.pode_gerir(null), 'pode_gerir(null) deveria ser false';
   assert (select count(*) from public.categorias where user_id = '00000000-0000-4000-a000-00000000000a') = 4,
     'gerente deveria ver as categorias de A';
-  assert (select count(*) from public.lancamentos where user_id = '00000000-0000-4000-a000-00000000000d') = 1,
-    'gerente deveria ver os lançamentos de C';
+  assert (select count(*) from public.lancamentos where user_id = '00000000-0000-4000-a000-00000000000d') = 0,
+    'VAZAMENTO: gerente G1 vê lançamentos de C (atendente de G2)';
+  assert (select count(*) from public.lancamentos where user_id not in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c')) = 0,
+    'VAZAMENTO: gerente G1 vê lançamentos de fora da equipe';
+  assert (select count(*) from public.categorias where user_id not in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c')) = 0,
+    'VAZAMENTO: gerente G1 vê categorias de fora da equipe';
 
   -- altera o preço de uma categoria de A (Pizza estava 6,00 desde a seção 3b)
   update public.categorias set valor_unitario = 5.00 where id = '00000000-0000-4000-c000-0000000000a4';
@@ -1164,50 +1271,45 @@ begin
   end;
   assert v_falhou, 'VAZAMENTO: gerente alterou profiles';
 
-  -- Equipe em 2001-01: A 225,00 + 25,00 (5 Pizzas em 01-11) = 250,00; C 30,00
-  -- Dia 2001-01-10 (cenário da spec): A 225,00, C 30,00, total 255,00
+  -- Equipe de G1 (0008): só G1 + A. C (30,00 em 2001-01-10, de G2) e B
+  -- (admin) NÃO aparecem. Em 2001-01: A 225,00 + 25,00 (5 Pizzas em 01-11).
+  -- Dia 2001-01-10 (cenário da spec): A 225,00, G1 0, total 225,00
+  assert (select count(*) from public.resumo_por_usuario('2001-01-10', '2001-01-10')) = 2,
+    'VAZAMENTO: Equipe de G1 deveria ter só 2 linhas (G1 e A)';
   select * into r from public.resumo_por_usuario('2001-01-10', '2001-01-10')
    where user_id = '00000000-0000-4000-a000-00000000000a';
   assert r.valor = 225.00 and r.quantidade = 70 and r.nome = 'Teste A' and r.username = 'rls_teste_a'
-     and r.role = 'user' and r.ativo,
-    format('Equipe: A deveria ter 70 / 225,00 (veio %s)', r);
-  select * into r from public.resumo_por_usuario('2001-01-10', '2001-01-10')
-   where user_id = '00000000-0000-4000-a000-00000000000d';
-  assert r.valor = 30.00 and r.quantidade = 10, format('Equipe: C deveria ter 10 / 30,00 (veio %s)', r);
+     and r.role = 'user' and r.ativo and r.total_geral = 225.00,
+    format('Equipe: A deveria ter 70 / 225,00 / total 225,00 (veio %s)', r);
+  assert not exists (select 1 from public.resumo_por_usuario('2001-01-10', '2001-01-10')
+                      where user_id in ('00000000-0000-4000-a000-00000000000d',
+                                        '00000000-0000-4000-a000-00000000000b',
+                                        '00000000-0000-4000-a000-00000000000e')),
+    'VAZAMENTO: Equipe de G1 mostra C, B ou G2';
   -- quem não produziu aparece com 0
   select * into r from public.resumo_por_usuario('2001-01-10', '2001-01-10')
    where user_id = '00000000-0000-4000-a000-00000000000c';
   assert r.valor = 0 and r.quantidade = 0 and r.role = 'gerente',
     format('Equipe: G deveria aparecer com 0 / 0 (veio %s)', r);
-  assert exists (select 1 from public.resumo_por_usuario('2001-01-10', '2001-01-10')
-                  where user_id = '00000000-0000-4000-a000-00000000000b' and valor = 0 and role = 'admin'),
-    'Equipe: B (admin) deveria aparecer com 0';
-  -- total_geral = soma de todos (255,00 se não houver dados reais nesse dia)
-  assert (select bool_and(total_geral = (select sum(valor) from public.resumo_por_usuario('2001-01-10', '2001-01-10')))
-            from public.resumo_por_usuario('2001-01-10', '2001-01-10')),
-    'Equipe: total_geral deveria ser a soma de todos';
-  assert (select sum(valor) from public.resumo_por_usuario('2001-01-10', '2001-01-10')
-           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
-                             '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d')) = 255.00,
-    'Equipe: total dos usuários de teste deveria ser 255,00';
-  -- ordem: valor desc => A antes de C antes dos zerados
-  assert (select array_agg(user_id order by ord) from (
-            select user_id, row_number() over () as ord
-              from public.resumo_por_usuario('2001-01-10', '2001-01-10')) x
-           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000d'))
-         = array['00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000d']::uuid[],
-    'Equipe: ordem deveria ser valor desc (A antes de C)';
+  -- total_geral = soma da equipe
+  assert (select bool_and(total_geral = 225.00) from public.resumo_por_usuario('2001-01-10', '2001-01-10')),
+    'Equipe: total_geral deveria ser 225,00 (só a equipe de G1)';
+  -- ordem: valor desc => A antes de G1
+  assert (select array_agg(user_id) from public.resumo_por_usuario('2001-01-10', '2001-01-10'))
+         = array['00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c']::uuid[],
+    'Equipe: ordem deveria ser valor desc (A antes de G1)';
 
-  -- filtro por NOME "Pizza" (sem caixa/espaços): A 100,00, C 0, soma 100,00
+  -- filtro por NOME "Pizza" (sem caixa/espaços): A 100,00; C não aparece
   select * into r from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array[' PIZZA '])
    where user_id = '00000000-0000-4000-a000-00000000000a';
   assert r.valor = 100.00 and r.quantidade = 20, format('Equipe [Pizza]: A deveria ter 20 / 100,00 (veio %s)', r);
-  select * into r from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array[' PIZZA '])
-   where user_id = '00000000-0000-4000-a000-00000000000d';
-  assert r.valor = 0 and r.quantidade = 0, format('Equipe [Pizza]: C deveria ter 0 (veio %s)', r);
-  assert (select sum(valor) from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array['pizza'])
-           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000d')) = 100.00,
-    'Equipe [Pizza]: total dos usuários de teste deveria ser 100,00';
+  assert not exists (select 1 from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array[' PIZZA '])
+                      where user_id = '00000000-0000-4000-a000-00000000000d'),
+    'VAZAMENTO: Equipe [Pizza] de G1 mostra C';
+  assert (select count(*) from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array['pizza'])) = 2,
+    'VAZAMENTO: Equipe [Pizza] de G1 deveria ter 2 linhas';
+  assert (select sum(valor) from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array['pizza'])) = 100.00,
+    'Equipe [Pizza]: total da equipe deveria ser 100,00';
   assert (select bool_and(total_geral = (select sum(valor) from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array['pizza'])))
             from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array['pizza'])),
     'Equipe [Pizza]: total_geral deveria ser a soma de todos';
@@ -1223,10 +1325,10 @@ begin
             array['00000000-0000-4000-c000-0000000000a4']::uuid[])
            where user_id = '00000000-0000-4000-a000-00000000000a') = 100.00,
     'Equipe [id Pizza de A]: A deveria ter 100,00';
-  assert (select valor from public.resumo_por_usuario('2001-01-10', '2001-01-10',
+  assert not exists (select 1 from public.resumo_por_usuario('2001-01-10', '2001-01-10',
             array['00000000-0000-4000-c000-0000000000a4']::uuid[])
-           where user_id = '00000000-0000-4000-a000-00000000000d') = 0,
-    'Equipe [id Pizza de A]: C deveria ter 0';
+           where user_id = '00000000-0000-4000-a000-00000000000d'),
+    'VAZAMENTO: Equipe [id Pizza de A] de G1 mostra C';
   -- período inválido => 22023
   v_estado := null;
   begin
@@ -1292,6 +1394,30 @@ begin
     'VAZAMENTO: autores (A) devolveu nome de quem não é autor de lançamento de A';
   assert (select count(*) from public.profiles) = 1, 'VAZAMENTO: A vê perfis alheios';
 
+  -- 0008: A vê o próprio gerente_id e o gerente via meu_gerente()
+  assert (select gerente_id from public.profiles where id = auth.uid()) = '00000000-0000-4000-a000-00000000000c',
+    'A deveria ver o próprio gerente_id = G';
+  select * into r from public.meu_gerente();
+  assert r.id = '00000000-0000-4000-a000-00000000000c' and r.nome = 'Teste Gerente' and r.username = 'rls_teste_g',
+    format('meu_gerente (A): deveria devolver G (veio %s)', r);
+  assert (select count(*) from public.meu_gerente()) = 1, 'meu_gerente (A): deveria ter 1 linha';
+  assert not public.pode_gerir('00000000-0000-4000-a000-00000000000c'),
+    'VAZAMENTO: atendente A pode_gerir o próprio gerente';
+
+  -- 0008: o atendente não altera o próprio gerente_id (profiles sem update pelo cliente)
+  v_estado := null;
+  begin
+    update public.profiles set gerente_id = null where id = auth.uid();
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: A alterou o próprio gerente_id (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    update public.profiles set gerente_id = '00000000-0000-4000-a000-00000000000e' where id = auth.uid();
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: A trocou o próprio gerente (veio %s)', v_estado);
+
   -- isolamento de C
   assert (select count(*) from public.lancamentos where user_id = '00000000-0000-4000-a000-00000000000d') = 0,
     'VAZAMENTO: A vê lançamentos de C';
@@ -1353,7 +1479,7 @@ end $$;
 
 -- ---------------------------------------------------------------------
 -- 4f) Despesas com gestor (0007). Estado: A e C entregadores, B admin,
---     G gerente. Período 2001-02.
+--     G gerente de A; H (G2) gerente de C. Período 2001-02.
 --     C ("Ana") cria a própria despesa (20,00) e não vê as de A nem de B.
 -- ---------------------------------------------------------------------
 do $$
@@ -1369,7 +1495,7 @@ begin
 end $$;
 
 -- Gerente G ("Maria"): vê, lança, edita e exclui despesas e categorias de
--- despesa de A ("João"); anti-forja; Equipe de despesas com filtro por nome.
+-- despesa de A ("João"); anti-forja; Equipe de despesas (só G + A, 0008) com filtro por nome.
 select set_config('request.jwt.claims',
   json_build_object('sub', '00000000-0000-4000-a000-00000000000c', 'role', 'authenticated')::text, true);
 
@@ -1381,13 +1507,19 @@ declare
 begin
   assert auth.uid() = '00000000-0000-4000-a000-00000000000c', 'setup: auth.uid() deveria ser G';
 
-  -- vê dados de despesa de todos
+  -- vê os dados de despesa de A (atendente dele); 0008: NÃO vê os de C nem de B
   assert (select count(*) from public.categorias_despesa where user_id = '00000000-0000-4000-a000-00000000000a') = 3,
     'gerente deveria ver as 3 categorias de despesa de A';
   assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000a') = 3,
     'gerente deveria ver as 3 despesas de A';
-  assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000d') = 1,
-    'gerente deveria ver a despesa de C';
+  assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000d') = 0,
+    'VAZAMENTO: gerente G1 vê a despesa de C (atendente de G2)';
+  assert (select count(*) from public.despesas where user_id not in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c')) = 0,
+    'VAZAMENTO: gerente G1 vê despesas de fora da equipe';
+  assert (select count(*) from public.categorias_despesa where user_id not in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c')) = 0,
+    'VAZAMENTO: gerente G1 vê categorias de despesa de fora da equipe';
 
   -- CRUD de categoria de despesa de A
   insert into public.categorias_despesa (id, user_id, nome)
@@ -1505,52 +1637,42 @@ begin
   assert not exists (select 1 from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28')),
     'VAZAMENTO: resumo_despesas_por_dia do gerente sem p_usuario soma outros usuários';
 
-  -- Equipe de despesas 2001-02: A 55,00 (4), B 99,00 (1), C 20,00 (1), G 0
+  -- Equipe de despesas de G1 em 2001-02 (0008): só A 55,00 (4) e G 0.
+  -- B (99,00) e C (20,00) existem mas são de fora da equipe.
+  assert (select count(*) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')) = 2,
+    'VAZAMENTO: Equipe de despesas de G1 deveria ter só 2 linhas (G1 e A)';
   select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
    where user_id = '00000000-0000-4000-a000-00000000000a';
   assert r.valor = 55.00 and r.quantidade = 4 and r.nome = 'Teste A' and r.username = 'rls_teste_a'
-     and r.role = 'user' and r.ativo,
-    format('Equipe despesas: A deveria ter 4 / 55,00 (veio %s)', r);
-  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
-   where user_id = '00000000-0000-4000-a000-00000000000d';
-  assert r.valor = 20.00 and r.quantidade = 1, format('Equipe despesas: C deveria ter 1 / 20,00 (veio %s)', r);
-  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
-   where user_id = '00000000-0000-4000-a000-00000000000b';
-  assert r.valor = 99.00 and r.quantidade = 1 and r.role = 'admin',
-    format('Equipe despesas: B deveria ter 1 / 99,00 (veio %s)', r);
+     and r.role = 'user' and r.ativo and r.total_geral = 55.00,
+    format('Equipe despesas: A deveria ter 4 / 55,00 / total 55,00 (veio %s)', r);
+  assert not exists (select 1 from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+                      where user_id in ('00000000-0000-4000-a000-00000000000b',
+                                        '00000000-0000-4000-a000-00000000000d',
+                                        '00000000-0000-4000-a000-00000000000e')),
+    'VAZAMENTO: Equipe de despesas de G1 mostra B, C ou G2';
   select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
    where user_id = '00000000-0000-4000-a000-00000000000c';
   assert r.valor = 0 and r.quantidade = 0 and r.role = 'gerente',
     format('Equipe despesas: G deveria aparecer com 0 / 0 (veio %s)', r);
-  assert (select bool_and(total_geral = (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')))
+  assert (select bool_and(total_geral = 55.00)
             from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')),
-    'Equipe despesas: total_geral deveria ser a soma de todos';
-  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
-           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
-                             '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d')) = 174.00,
-    'Equipe despesas: total dos usuários de teste deveria ser 174,00';
-  -- ordem: valor desc => B, A, C
-  assert (select array_agg(user_id order by ord) from (
-            select user_id, row_number() over () as ord
-              from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')) x
-           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
-                             '00000000-0000-4000-a000-00000000000d'))
-         = array['00000000-0000-4000-a000-00000000000b', '00000000-0000-4000-a000-00000000000a',
-                 '00000000-0000-4000-a000-00000000000d']::uuid[],
-    'Equipe despesas: ordem deveria ser valor desc (B, A, C)';
+    'Equipe despesas: total_geral deveria ser 55,00 (só a equipe de G1)';
+  -- ordem: valor desc => A, G1
+  assert (select array_agg(user_id) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28'))
+         = array['00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c']::uuid[],
+    'Equipe despesas: ordem deveria ser valor desc (A, G1)';
 
   -- filtro por NOME sem caixa/espaços (só letras ASCII mudam de caixa, para
-  -- não depender do locale do lower()): " COMBUSTível " => A 35,90; B 99,00; C 20,00
+  -- não depender do locale do lower()): " COMBUSTível " => A 35,90
   select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array[' COMBUSTível '])
    where user_id = '00000000-0000-4000-a000-00000000000a';
   assert r.valor = 35.90 and r.quantidade = 1, format('Equipe despesas [Combustível]: A deveria ter 1 / 35,90 (veio %s)', r);
-  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array[' COMBUSTível '])
-           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
-                             '00000000-0000-4000-a000-00000000000d')) = 154.90,
-    'Equipe despesas [Combustível]: total dos usuários de teste deveria ser 154,90';
-  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array['PEDágio'])
-   where user_id = '00000000-0000-4000-a000-00000000000d';
-  assert r.valor = 0 and r.quantidade = 0, format('Equipe despesas [Pedágio]: C deveria ter 0 (veio %s)', r);
+  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array[' COMBUSTível '])) = 35.90,
+    'Equipe despesas [Combustível]: total da equipe de G1 deveria ser 35,90';
+  assert not exists (select 1 from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array['PEDágio'])
+                      where user_id = '00000000-0000-4000-a000-00000000000d'),
+    'VAZAMENTO: Equipe despesas [Pedágio] de G1 mostra C';
   assert (select valor from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array['PEDágio'])
            where user_id = '00000000-0000-4000-a000-00000000000a') = 5.00,
     'Equipe despesas [Pedágio]: A deveria ter 5,00';
@@ -1678,6 +1800,330 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- 4g) Equipes (0008, spec 010). Estado: G1 = G com A; G2 = H com C;
+--     B admin. Período 2001-01 (receitas) e 2001-02 (despesas).
+-- ---------------------------------------------------------------------
+
+-- G2 (H): dados próprios e lançamentos para C (atendente dele).
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000e', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_estado text;
+  v_linhas integer;
+  r        record;
+begin
+  assert auth.uid() = '00000000-0000-4000-a000-00000000000e', 'setup: auth.uid() deveria ser H (G2)';
+  assert public.is_gestor() and not public.is_admin(), 'H deveria ser gestor (gerente) e não admin';
+
+  -- vê só ele + C
+  assert (select array_agg(id order by id) from public.profiles)
+         = array['00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e']::uuid[],
+    'VAZAMENTO: G2 deveria ver exatamente G2 e C';
+
+  -- dados próprios: 2 × 4,00 = 8,00 em 2001-01-10
+  insert into public.categorias (id, nome, valor_unitario)
+  values ('00000000-0000-4000-c000-0000000000e1', 'Pizza', 4.00);
+  insert into public.lancamentos (id, categoria_id, data, quantidade)
+  values ('00000000-0000-4000-d000-0000000000e9', '00000000-0000-4000-c000-0000000000e1', '2001-01-10', 2);
+  insert into public.categorias_despesa (id, nome) values ('00000000-0000-4000-e000-0000000000e1', 'Combustível');
+  insert into public.despesas (id, categoria_despesa_id, data, valor)
+  values ('00000000-0000-4000-f000-0000000000e9', '00000000-0000-4000-e000-0000000000e1', '2001-02-10', 11.00);
+
+  -- vê e opera os dados de C: lança 1 Marmita (3,00) para C em 2001-01-10
+  assert (select count(*) from public.lancamentos where user_id = '00000000-0000-4000-a000-00000000000d') = 1,
+    'G2 deveria ver o lançamento de C';
+  assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000d') = 2,
+    'G2 deveria ver as 2 despesas de C';
+  insert into public.lancamentos (id, user_id, categoria_id, data, quantidade)
+  values ('00000000-0000-4000-d000-0000000000e8', '00000000-0000-4000-a000-00000000000d',
+          '00000000-0000-4000-c000-0000000000d1', '2001-01-10', 1);
+  assert (select criado_por from public.lancamentos where id = '00000000-0000-4000-d000-0000000000e8')
+         = '00000000-0000-4000-a000-00000000000e',
+    'criado_por do lançamento de G2 para C deveria ser G2';
+  update public.categorias set valor_unitario = 3.00 where id = '00000000-0000-4000-c000-0000000000d1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'G2 deveria editar categoria de C';
+
+  -- não vê nada de A nem de G1
+  assert (select count(*) from public.lancamentos where user_id in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c')) = 0,
+    'VAZAMENTO: G2 vê lançamentos de A/G1';
+  assert (select count(*) from public.despesas where user_id in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c')) = 0,
+    'VAZAMENTO: G2 vê despesas de A/G1';
+
+  -- Equipe de G2 em 2001-01-10: C 33,00 (11), G2 8,00 (2); total 41,00
+  assert (select count(*) from public.resumo_por_usuario('2001-01-10', '2001-01-10')) = 2,
+    'VAZAMENTO: Equipe de G2 deveria ter 2 linhas';
+  select * into r from public.resumo_por_usuario('2001-01-10', '2001-01-10')
+   where user_id = '00000000-0000-4000-a000-00000000000d';
+  assert r.valor = 33.00 and r.quantidade = 11 and r.total_geral = 41.00,
+    format('Equipe G2: C deveria ter 11 / 33,00 / total 41,00 (veio %s)', r);
+  assert (select valor from public.resumo_por_usuario_nomes('2001-01-10', '2001-01-10', array['pizza'])
+           where user_id = '00000000-0000-4000-a000-00000000000e') = 8.00,
+    'Equipe G2 [pizza]: G2 deveria ter 8,00';
+  -- despesas: C 27,00 (2), G2 11,00 (1)
+  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')) = 38.00,
+    'Equipe despesas G2: total deveria ser 38,00';
+  -- relatório de C
+  assert (select total_geral from public.resumo_por_categoria('2001-01-01', '2001-01-31', null,
+            '00000000-0000-4000-a000-00000000000d') limit 1) = 33.00,
+    'G2: resumo_por_categoria de C deveria ser 33,00';
+  assert (select sum(valor) from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000d')) = 27.00,
+    'G2: resumo_despesas_por_dia de C deveria ser 27,00';
+  -- relatório de A => 42501
+  v_estado := null;
+  begin
+    perform * from public.resumo_por_categoria('2001-01-01', '2001-01-31', null,
+                                               '00000000-0000-4000-a000-00000000000a');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: G2 viu relatório de A (veio %s)', v_estado);
+end $$;
+
+-- G1 (G) não vê nem opera dados de C (atendente de G2) nem de G2.
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000c', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_estado text;
+  v_linhas integer;
+  v_alvo   uuid;
+begin
+  assert auth.uid() = '00000000-0000-4000-a000-00000000000c', 'setup: auth.uid() deveria ser G (G1)';
+
+  -- não vê
+  assert (select count(*) from public.categorias where user_id in (
+            '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e')) = 0,
+    'VAZAMENTO: G1 vê categorias de C/G2';
+  assert (select count(*) from public.lancamentos where user_id in (
+            '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e')) = 0,
+    'VAZAMENTO: G1 vê lançamentos de C/G2';
+  assert (select count(*) from public.categorias_despesa where user_id in (
+            '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e')) = 0,
+    'VAZAMENTO: G1 vê categorias de despesa de C/G2';
+  assert (select count(*) from public.despesas where user_id in (
+            '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e')) = 0,
+    'VAZAMENTO: G1 vê despesas de C/G2';
+  assert not exists (select 1 from public.profiles where id in (
+            '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e')),
+    'VAZAMENTO: G1 vê perfis de C/G2';
+
+  -- não altera / não apaga
+  update public.lancamentos set quantidade = 99 where id = '00000000-0000-4000-d000-0000000000d1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: G1 alterou lançamento de C';
+  delete from public.lancamentos where id = '00000000-0000-4000-d000-0000000000e9';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: G1 apagou lançamento de G2';
+  update public.categorias set valor_unitario = 0 where id in (
+    '00000000-0000-4000-c000-0000000000d1', '00000000-0000-4000-c000-0000000000e1');
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: G1 alterou categoria de C/G2';
+  update public.despesas set valor = 1 where id in (
+    '00000000-0000-4000-f000-0000000000d1', '00000000-0000-4000-f000-0000000000e9');
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: G1 alterou despesa de C/G2';
+  delete from public.categorias_despesa where id = '00000000-0000-4000-e000-0000000000e1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: G1 apagou categoria de despesa de G2';
+
+  -- não grava dados para C nem para G2 (RLS => 42501)
+  foreach v_alvo in array array['00000000-0000-4000-a000-00000000000d',
+                                '00000000-0000-4000-a000-00000000000e']::uuid[] loop
+    v_estado := null;
+    begin
+      insert into public.categorias (user_id, nome, valor_unitario) values (v_alvo, 'Intrusa', 1.00);
+    exception when others then v_estado := sqlstate;
+    end;
+    assert v_estado = '42501', format('VAZAMENTO: G1 criou categoria para %s (veio %s)', v_alvo, v_estado);
+
+    v_estado := null;
+    begin
+      insert into public.categorias_despesa (user_id, nome) values (v_alvo, 'Intrusa');
+    exception when others then v_estado := sqlstate;
+    end;
+    assert v_estado = '42501', format('VAZAMENTO: G1 criou categoria de despesa para %s (veio %s)', v_alvo, v_estado);
+  end loop;
+
+  v_estado := null;
+  begin
+    insert into public.lancamentos (user_id, categoria_id, data, quantidade)
+    values ('00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-c000-0000000000d1', '2001-01-10', 1);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado is not null, 'VAZAMENTO: G1 lançou para C';
+
+  v_estado := null;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000e', '00000000-0000-4000-e000-0000000000e1', '2001-02-10', 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado is not null, 'VAZAMENTO: G1 lançou despesa para G2';
+
+  -- não transfere lançamento de A para C
+  v_estado := null;
+  begin
+    update public.lancamentos set user_id = '00000000-0000-4000-a000-00000000000d'
+     where id = '00000000-0000-4000-d000-0000000000c3';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado is not null, 'VAZAMENTO: G1 transferiu lançamento de A para C';
+
+  -- RPCs com p_usuario de C ou de G2 => 42501
+  foreach v_alvo in array array['00000000-0000-4000-a000-00000000000d',
+                                '00000000-0000-4000-a000-00000000000e']::uuid[] loop
+    v_estado := null;
+    begin
+      perform * from public.resumo_por_categoria('2001-01-01', '2001-01-31', null, v_alvo);
+    exception when others then v_estado := sqlstate;
+    end;
+    assert v_estado = '42501', format('VAZAMENTO: G1 resumo_por_categoria de %s (veio %s)', v_alvo, v_estado);
+    v_estado := null;
+    begin
+      perform * from public.resumo_por_dia('2001-01-01', '2001-01-31', null, v_alvo);
+    exception when others then v_estado := sqlstate;
+    end;
+    assert v_estado = '42501', format('VAZAMENTO: G1 resumo_por_dia de %s (veio %s)', v_alvo, v_estado);
+    v_estado := null;
+    begin
+      perform * from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null, v_alvo);
+    exception when others then v_estado := sqlstate;
+    end;
+    assert v_estado = '42501', format('VAZAMENTO: G1 resumo_despesas_por_categoria de %s (veio %s)', v_alvo, v_estado);
+    v_estado := null;
+    begin
+      perform * from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28', null, v_alvo);
+    exception when others then v_estado := sqlstate;
+    end;
+    assert v_estado = '42501', format('VAZAMENTO: G1 resumo_despesas_por_dia de %s (veio %s)', v_alvo, v_estado);
+  end loop;
+
+  -- Equipe de G1 continua só G1 + A (C/G2 têm dados em 2001-01-10)
+  assert (select array_agg(user_id order by user_id) from public.resumo_por_usuario('2001-01-10', '2001-01-10'))
+         = array['00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000c']::uuid[],
+    'VAZAMENTO: Equipe de G1 deveria ser só G1 e A';
+  assert (select bool_and(total_geral = 225.00) from public.resumo_por_usuario('2001-01-10', '2001-01-10')),
+    'VAZAMENTO: total da Equipe de G1 soma dados de fora';
+
+  -- autores: G2 é autor só de dados de C/G2 => não aparece para G1
+  assert not exists (select 1 from public.autores(array['00000000-0000-4000-a000-00000000000e',
+                                                        '00000000-0000-4000-a000-00000000000d']::uuid[])),
+    'VAZAMENTO: autores (G1) devolveu G2/C';
+  -- G1 não tem gerente
+  assert not exists (select 1 from public.meu_gerente()), 'meu_gerente (G1) deveria ser vazio';
+end $$;
+
+-- C ("Ana", atendente de G2): vê o lançamento de G2 com autor; gerente = G2.
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000d', 'role', 'authenticated')::text, true);
+
+do $$
+begin
+  assert (select count(*) from public.lancamentos) = 2, 'C deveria ver os 2 próprios lançamentos';
+  assert exists (select 1 from public.autores(array['00000000-0000-4000-a000-00000000000e']::uuid[])),
+    'autores (C): deveria devolver G2';
+  assert (select id from public.meu_gerente()) = '00000000-0000-4000-a000-00000000000e',
+    'meu_gerente (C): deveria ser G2';
+  assert (select count(*) from public.profiles) = 1, 'VAZAMENTO: C vê perfis alheios (inclusive G2)';
+end $$;
+
+-- Admin (B) vê todos, inclusive as duas equipes.
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000b', 'role', 'authenticated')::text, true);
+
+do $$
+begin
+  assert (select count(*) from public.profiles where id in (
+            '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
+            '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d',
+            '00000000-0000-4000-a000-00000000000e')) = 5,
+    'admin deveria ver os 5 perfis de teste';
+  assert public.pode_gerir('00000000-0000-4000-a000-00000000000a')
+     and public.pode_gerir('00000000-0000-4000-a000-00000000000d')
+     and public.pode_gerir('00000000-0000-4000-a000-00000000000e'),
+    'admin deveria pode_gerir todos';
+  assert (select count(*) from public.lancamentos where user_id in (
+            '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-a000-00000000000e')) = 3,
+    'admin deveria ver os lançamentos de C e G2';
+  -- Equipe do admin em 2001-01-10: A 225, C 33, G2 8, G1 0, B 0 => 266
+  assert (select sum(valor) from public.resumo_por_usuario('2001-01-10', '2001-01-10')
+           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
+                             '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d',
+                             '00000000-0000-4000-a000-00000000000e')) = 266.00,
+    'admin: Equipe dos usuários de teste deveria somar 266,00';
+  assert (select count(*) from public.resumo_por_usuario('2001-01-10', '2001-01-10')
+           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
+                             '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d',
+                             '00000000-0000-4000-a000-00000000000e')) = 5,
+    'admin: Equipe deveria listar os 5 perfis de teste';
+  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000d',
+                             '00000000-0000-4000-a000-00000000000e')) = 93.00,
+    'admin: Equipe de despesas de A + C + G2 deveria somar 93,00';
+  assert (select total_geral from public.resumo_por_categoria('2001-01-01', '2001-01-31', null,
+            '00000000-0000-4000-a000-00000000000d') limit 1) = 33.00,
+    'admin: resumo_por_categoria de C deveria ser 33,00';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 4h) Mudança de papel (0008), desfeita com savepoint:
+--     rebaixar G1 libera A (gerente_id = null) e G1 perde o acesso a A;
+--     promover o atendente C limpa o gerente_id dele.
+-- ---------------------------------------------------------------------
+reset role;
+savepoint papel;
+
+update public.profiles set role = 'user' where id = '00000000-0000-4000-a000-00000000000c';
+update public.profiles set role = 'gerente' where id = '00000000-0000-4000-a000-00000000000d';
+
+do $$
+begin
+  assert (select gerente_id from public.profiles where id = '00000000-0000-4000-a000-00000000000a') is null,
+    'rebaixar G1 deveria liberar A (gerente_id = null)';
+  assert (select gerente_id from public.profiles where id = '00000000-0000-4000-a000-00000000000d') is null,
+    'promover C a gerente deveria limpar o gerente_id de C';
+  assert (select role from public.profiles where id = '00000000-0000-4000-a000-00000000000d') = 'gerente',
+    'C deveria ter virado gerente';
+end $$;
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000c', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_estado text;
+begin
+  assert not public.pode_gerir('00000000-0000-4000-a000-00000000000a'), 'G1 rebaixado ainda pode_gerir A';
+  assert (select count(*) from public.lancamentos where user_id = '00000000-0000-4000-a000-00000000000a') = 0,
+    'VAZAMENTO: G1 rebaixado ainda vê lançamentos de A';
+  assert (select count(*) from public.profiles) = 1, 'VAZAMENTO: G1 rebaixado ainda vê perfis alheios';
+  v_estado := null;
+  begin
+    perform * from public.resumo_por_usuario('2001-01-10', '2001-01-10');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('G1 rebaixado: resumo_por_usuario deveria dar 42501 (veio %s)', v_estado);
+end $$;
+
+reset role;
+rollback to savepoint papel;
+release savepoint papel;
+
+do $$
+begin
+  assert (select gerente_id from public.profiles where id = '00000000-0000-4000-a000-00000000000a')
+         = '00000000-0000-4000-a000-00000000000c',
+    'setup: A deveria voltar a ser atendente de G1 após o rollback do savepoint';
+end $$;
+
+-- ---------------------------------------------------------------------
 -- 4d) Gerente inativo perde tudo
 -- ---------------------------------------------------------------------
 reset role;
@@ -1691,6 +2137,9 @@ declare
   v_estado text;
 begin
   assert not public.is_gestor(), 'is_gestor() deveria ser false para gerente inativo';
+  assert not public.pode_gerir('00000000-0000-4000-a000-00000000000a'),
+    'VAZAMENTO: gerente inativo pode_gerir o atendente A';
+  assert not public.pode_gerir(auth.uid()), 'VAZAMENTO: gerente inativo pode_gerir a si mesmo';
   assert (select count(*) from public.lancamentos) = 0, 'VAZAMENTO: gerente inativo vê lançamentos';
   assert (select count(*) from public.categorias) = 0, 'VAZAMENTO: gerente inativo vê categorias';
   assert (select count(*) from public.profiles) = 1, 'VAZAMENTO: gerente inativo vê perfis alheios';
@@ -1793,6 +2242,12 @@ begin
   assert exists (select 1 from public.despesas
                   where id = '00000000-0000-4000-f000-0000000000c1' and criado_por is null),
     'on delete set null: despesa feita por G deveria continuar, com criado_por null';
+  -- 0008: excluir o gerente libera o atendente (FK profiles.gerente_id on delete set null)
+  assert (select gerente_id from public.profiles where id = '00000000-0000-4000-a000-00000000000a') is null,
+    'on delete set null: A deveria ficar sem gerente após excluir G';
+  assert (select gerente_id from public.profiles where id = '00000000-0000-4000-a000-00000000000d')
+         = '00000000-0000-4000-a000-00000000000e',
+    'C deveria continuar atendente de G2';
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -1928,6 +2383,23 @@ begin
     v_falhou := true;
   end;
   assert v_falhou, 'VAZAMENTO: anon executa is_gestor';
+
+  -- equipes (0008)
+  v_falhou := false;
+  begin
+    perform public.pode_gerir('00000000-0000-4000-a000-00000000000a');
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon executa pode_gerir';
+
+  v_falhou := false;
+  begin
+    perform * from public.meu_gerente();
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon executa meu_gerente';
 
   -- despesas (0007)
   v_falhou := false;

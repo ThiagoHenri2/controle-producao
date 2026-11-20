@@ -1,17 +1,28 @@
 // =====================================================================
 // Edge Function: admin-users
-// Spec 006 — Administração de usuários; spec 008 — papel gerente
+// Spec 006 — Administração de usuários; spec 008 — papel gerente;
+// spec 010 — atendentes por gerente.
 //
 // Endpoint único POST { action, ... }:
-//   create          { nome, username, password, role? }   role: "user" (padrão) | "gerente" | "admin"
+//   create          { nome, username, password, role?, gerente_id? }
+//                   role: "user" (padrão) | "gerente" | "admin"
+//                   gerente_id: uuid de um gerente ATIVO | null; só com role "user"
 //   reset_password  { user_id, password }
 //   set_active      { user_id, ativo }
 //   set_role        { user_id, role }                     role: "user" | "gerente" | "admin"
+//   set_gerente     { user_id, gerente_id }               gerente_id: uuid de gerente ativo | null
 //
-// Só o ADMIN ativo usa esta função (o gerente NÃO gerencia usuários: 403).
+// Autorização (caller = dono do JWT, precisa estar ATIVO):
+//   - admin: todas as ações, sobre qualquer usuário;
+//   - gerente: SÓ reset_password, e só para os atendentes dele
+//     (target.role = "user" e target.gerente_id = caller); fora disso 403;
+//   - demais: 403.
 // O admin não pode rebaixar a si mesmo (para "user" ou "gerente") nem se desativar.
+// Rebaixar um gerente libera os atendentes dele e promover um atendente
+// limpa o gerente_id dele (triggers da migration 0008).
 //
-// Respostas: 200 { ok: true, user? } | 4xx/5xx { error } (mensagens pt-BR)
+// Respostas: 200 { ok: true, user } | 4xx/5xx { error } (mensagens pt-BR)
+// user = { id, username, nome, role, ativo, gerente_id }
 //
 // Arquivo AUTOCONTIDO (sem imports relativos): pode ser colado no editor de
 // Edge Functions do painel do Supabase ou publicado com
@@ -33,7 +44,7 @@ const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BAN_FOREVER = "876000h"; // ~100 anos
-const PROFILE_COLUMNS = "id, username, nome, role, ativo";
+const PROFILE_COLUMNS = "id, username, nome, role, ativo, gerente_id";
 
 const ROLES = ["user", "gerente", "admin"] as const;
 type Role = (typeof ROLES)[number];
@@ -48,6 +59,7 @@ interface ProfileDTO {
   nome: string;
   role: Role;
   ativo: boolean;
+  gerente_id: string | null;
 }
 
 class HttpError extends Error {
@@ -130,6 +142,42 @@ function parseOptionalRole(body: Record<string, unknown>): Role {
   return v;
 }
 
+/**
+ * gerente_id (create: opcional; set_gerente: obrigatório).
+ * Ausente => undefined (só no create); null => sem gerente; string => uuid.
+ */
+function parseGerenteId(
+  body: Record<string, unknown>,
+  required: boolean,
+): string | null | undefined {
+  const v = body["gerente_id"];
+  if (v === undefined) {
+    if (required) bad('Campo "gerente_id" é obrigatório (identificador do gerente ou null).');
+    return undefined;
+  }
+  if (v === null) return null;
+  if (typeof v !== "string" || !UUID_RE.test(v.trim())) {
+    bad('Campo "gerente_id" deve ser o identificador de um gerente ou null.');
+  }
+  return v.trim().toLowerCase();
+}
+
+const MSG_SO_ATENDENTE = "Só atendentes podem ter um gerente.";
+const MSG_GERENTE_INVALIDO = "O gerente informado precisa ser um gerente ativo.";
+
+/**
+ * Erros dos triggers/constraints de profiles.gerente_id (migration 0008)
+ * viram 400. Cobre a corrida "o gerente foi rebaixado entre a validação e
+ * o update".
+ */
+function gerenteConstraintError(err: { code?: string; message?: string } | null): HttpError | null {
+  if (!err) return null;
+  if (err.code === "23514" || err.code === "23503") {
+    return new HttpError(400, err.message === MSG_SO_ATENDENTE ? MSG_SO_ATENDENTE : MSG_GERENTE_INVALIDO);
+  }
+  return null;
+}
+
 function isEmailExistsError(err: { message?: string; code?: string; status?: number }): boolean {
   const msg = (err.message ?? "").toLowerCase();
   return (
@@ -177,16 +225,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     const callerId = userData.user.id;
 
-    // 2. Autorização: precisa ser admin ativo (gerente => 403)
+    // 2a. Autorização: admin ou gerente, ATIVO; o resto => 403.
+    //     (2b, abaixo: o gerente só usa reset_password dos atendentes dele.)
     const { data: callerProfile, error: callerErr } = await admin
       .from("profiles")
       .select("role, ativo")
       .eq("id", callerId)
       .maybeSingle();
     if (callerErr) throw callerErr;
-    if (!callerProfile || callerProfile.role !== "admin" || callerProfile.ativo !== true) {
+    if (
+      !callerProfile || callerProfile.ativo !== true ||
+      (callerProfile.role !== "admin" && callerProfile.role !== "gerente")
+    ) {
       return json(403, { error: "Acesso negado" });
     }
+    const callerIsAdmin = callerProfile.role === "admin";
 
     // 3. Payload
     let body: Record<string, unknown>;
@@ -202,6 +255,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const action = body["action"];
 
+    // 2b. O gerente só pode usar reset_password (o alvo é conferido na ação).
+    if (!callerIsAdmin && action !== "reset_password") {
+      return json(403, { error: "Acesso negado" });
+    }
+
     // Busca o profile-alvo (404 se não existir)
     const loadTarget = async (id: string): Promise<ProfileDTO> => {
       const { data, error } = await admin
@@ -214,6 +272,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return data as ProfileDTO;
     };
 
+    // Confere que o id é de um gerente ATIVO (400 caso contrário).
+    const assertGerenteAtivo = async (id: string): Promise<void> => {
+      const { data, error } = await admin
+        .from("profiles")
+        .select("role, ativo")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data || data.role !== "gerente" || data.ativo !== true) {
+        throw new HttpError(400, MSG_GERENTE_INVALIDO);
+      }
+    };
+
     switch (action) {
       // -------------------------------------------------------------
       case "create": {
@@ -221,6 +292,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const username = parseUsername(body);
         const password = parsePassword(body);
         const role = parseOptionalRole(body);
+        const gerenteId = parseGerenteId(body, false) ?? null;
+        if (gerenteId !== null) {
+          if (role !== "user") return json(400, { error: MSG_SO_ATENDENTE });
+          await assertGerenteAtivo(gerenteId);
+        }
 
         const { data: existing, error: existErr } = await admin
           .from("profiles")
@@ -249,7 +325,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         const { data: profile, error: insertErr } = await admin
           .from("profiles")
-          .insert({ id: newId, username, nome, role, ativo: true })
+          .insert({ id: newId, username, nome, role, ativo: true, gerente_id: gerenteId })
           .select(PROFILE_COLUMNS)
           .single();
         if (insertErr || !profile) {
@@ -261,6 +337,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
           if (insertErr?.code === "23505") {
             return json(409, { error: "Usuário já existe" });
           }
+          const gerenteErr = gerenteConstraintError(insertErr);
+          if (gerenteErr) throw gerenteErr;
           throw insertErr ?? new Error("insert profile sem retorno");
         }
 
@@ -271,7 +349,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case "reset_password": {
         const userId = parseUserId(body);
         const password = parsePassword(body);
-        const target = await loadTarget(userId);
+
+        let target: ProfileDTO;
+        if (callerIsAdmin) {
+          target = await loadTarget(userId);
+        } else {
+          // Gerente: só os atendentes dele. Alvo inexistente também => 403
+          // (não revela quais ids existem).
+          const { data, error } = await admin
+            .from("profiles")
+            .select(PROFILE_COLUMNS)
+            .eq("id", userId)
+            .maybeSingle();
+          if (error) throw error;
+          const t = data as ProfileDTO | null;
+          if (!t || t.role !== "user" || t.gerente_id !== callerId) {
+            return json(403, { error: "Acesso negado" });
+          }
+          target = t;
+        }
 
         const { error } = await admin.auth.admin.updateUserById(userId, { password });
         if (error) {
@@ -331,6 +427,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .select(PROFILE_COLUMNS)
           .single();
         if (updErr || !profile) throw updErr ?? new Error("update profile sem retorno");
+        return json(200, { ok: true, user: profile as ProfileDTO });
+      }
+
+      // -------------------------------------------------------------
+      case "set_gerente": {
+        const userId = parseUserId(body);
+        const gerenteId = parseGerenteId(body, true) ?? null;
+        const target = await loadTarget(userId);
+        if (target.role !== "user") return json(400, { error: MSG_SO_ATENDENTE });
+        if (gerenteId !== null) await assertGerenteAtivo(gerenteId);
+
+        const { data: profile, error: updErr } = await admin
+          .from("profiles")
+          .update({ gerente_id: gerenteId })
+          .eq("id", userId)
+          .select(PROFILE_COLUMNS)
+          .single();
+        if (updErr || !profile) {
+          const gerenteErr = gerenteConstraintError(updErr);
+          if (gerenteErr) throw gerenteErr;
+          throw updErr ?? new Error("update profile sem retorno");
+        }
         return json(200, { ok: true, user: profile as ProfileDTO });
       }
 
