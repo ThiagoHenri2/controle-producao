@@ -9,3 +9,4 @@
 | 5 | 2026-11-20 | Preço unitário congelado no lançamento | Reajustes de preço não podem alterar o histórico financeiro. |
 | 6 | 2026-11-20 | `HashRouter` | O GitHub Pages não tem rewrite de SPA; o hash evita 404 no reload. |
 | 7 | 2026-11-20 | Edge Function única `admin-users` com ações | Menos deploys e lógica de autorização centralizada (o plano citava `admin-create-user`). |
+| 8 | 2026-11-20 | Papel **gerente**; admin ⊇ gerente ("gestor") vê e opera dados de todos os entregadores | Pedido do usuário: acompanhar quanto pagar a cada entregador. Substitui a regra anterior "admin não vê lançamentos alheios". Entregadores continuam isolados entre si. Lançamentos gravam `criado_por` para auditoria. |
