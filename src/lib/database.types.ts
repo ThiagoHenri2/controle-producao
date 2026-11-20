@@ -132,6 +132,26 @@ export type Database = {
     Functions: {
       is_admin: { Args: never; Returns: boolean };
       is_ativo: { Args: never; Returns: boolean };
+      // Migration 0003_resumo.sql (spec 005). `bigint`/`numeric` → number; `date`/`uuid` → string.
+      resumo_por_categoria: {
+        Args: { p_ate: string; p_de: string };
+        Returns: {
+          ativa: boolean;
+          categoria_id: string;
+          nome: string;
+          quantidade: number;
+          total_geral: number;
+          valor: number;
+        }[];
+      };
+      resumo_por_dia: {
+        Args: { p_ate: string; p_de: string };
+        Returns: {
+          data: string;
+          quantidade: number;
+          valor: number;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;

@@ -21,8 +21,8 @@ Mostrar quanto foi produzido em um período: o **total geral em R$**, o **total 
 ```sql
 -- stable, security invoker; RLS já filtra por usuário
 resumo_por_categoria(p_de date, p_ate date)
-  returns table (categoria_id uuid, nome text, quantidade bigint, valor numeric)
-  -- group by categoria, order by valor desc
+  returns table (categoria_id uuid, nome text, ativa boolean, quantidade bigint, valor numeric, total_geral numeric)
+  -- group by categoria, order by valor desc, nome; total_geral (sum() over ()) se repete em todas as linhas
 
 resumo_por_dia(p_de date, p_ate date)
   returns table (data date, quantidade bigint, valor numeric)
@@ -31,6 +31,15 @@ resumo_por_dia(p_de date, p_ate date)
 O total geral é a soma de `resumo_por_categoria.valor`. Some no front em **centavos**, ou retorne pela RPC; prefira acrescentar `total_geral` via `sum() over ()`.
 
 Front (`src/features/relatorio/`): `useResumo(de, ate)` chama as duas RPCs em paralelo. Query key: `['resumo', de, ate]`.
+
+Período inválido (início > fim ou intervalo grande demais) → as RPCs levantam erro Postgres `22023` com mensagem pt-BR.
+
+Implementação no front:
+- `ativa` foi acrescentada ao retorno para marcar "inativa" na lista sem uma segunda consulta.
+- O card usa `total_geral` da RPC. "N entregas" é a soma das quantidades (inteiros).
+- O limite de 366 dias conta início e fim (`periodos.ts`). A RPC aceita `p_ate - p_de <= 366`, que é 1 dia mais folgada, então o front nunca envia um período que o banco recusaria.
+- Query string: `?periodo=hoje|semana|mes` para os chips, `?de=…&ate=…` para o personalizado. Se a URL for inválida, o front cai no padrão (Mês).
+- A tela Lançar invalida o prefixo `['resumo']` após cada mutation.
 
 ## Wireframe
 ```
@@ -59,9 +68,9 @@ Front (`src/features/relatorio/`): `useResumo(de, ate)` chama as duas RPCs em pa
 - Período sem dados: EmptyState "Nenhum lançamento neste período".
 
 ## Critérios de aceite
-- [ ] Com 50 Sanduíche × 2,50 + 20 Pizza × 5,00 hoje, o filtro "Hoje" mostra o total **R$ 225,00**, Sanduíche 50 un R$ 125,00 e Pizza 20 un R$ 100,00.
-- [ ] "Semana" e "Mês" calculam os limites corretos (testar com a data fixada em um domingo e no dia 1º).
-- [ ] Personalizado com início > fim é bloqueado com mensagem.
+- [x] Com 50 Sanduíche × 2,50 + 20 Pizza × 5,00 hoje, o filtro "Hoje" mostra o total **R$ 225,00**, Sanduíche 50 un R$ 125,00 e Pizza 20 un R$ 100,00.
+- [x] "Semana" e "Mês" calculam os limites corretos (testar com a data fixada em um domingo e no dia 1º).
+- [x] Personalizado com início > fim é bloqueado com mensagem.
 - [ ] Reajuste de preço não altera totais de períodos passados.
 - [ ] O usuário B nunca vê valores do usuário A (RLS aplicado nas RPCs).
-- [ ] Reload mantém o filtro (query string).
+- [x] Reload mantém o filtro (query string).
