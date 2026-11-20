@@ -33,7 +33,7 @@ Criar o papel **gerente** para acompanhar **quanto será pago a cada entregador*
 - `profiles.role`: o check passa a aceitar `('admin','gerente','user')`.
 - `is_gestor()`: `security definer`, `stable`, `search_path=public`. Retorna `exists(profile do auth.uid() com role in ('admin','gerente') and ativo)`.
 - **`lancamentos.criado_por`**:
-  - `uuid not null default auth.uid() references auth.users on delete set null`; precisa ser nullable por causa do `set null`. Linhas antigas: preencher com `user_id`.
+  - `uuid null default auth.uid() references auth.users on delete set null` (nullable por causa do `set null`). As linhas antigas são preenchidas com `user_id` (backfill). Há um índice em `criado_por`.
   - Um trigger before insert força `criado_por = auth.uid()` quando houver `auth.uid()`, para ninguém forjar o autor.
   - No update, `criado_por` não muda.
 - **RLS** (categorias e lançamentos), em todas as operações: `is_ativo() and (user_id = auth.uid() or is_gestor())`.

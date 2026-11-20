@@ -1,12 +1,15 @@
 // =====================================================================
 // Edge Function: admin-users
-// Spec 006 — Administração de usuários
+// Spec 006 — Administração de usuários; spec 008 — papel gerente
 //
 // Endpoint único POST { action, ... }:
-//   create          { nome, username, password }
+//   create          { nome, username, password, role? }   role: "user" (padrão) | "gerente" | "admin"
 //   reset_password  { user_id, password }
 //   set_active      { user_id, ativo }
-//   set_role        { user_id, role }
+//   set_role        { user_id, role }                     role: "user" | "gerente" | "admin"
+//
+// Só o ADMIN ativo usa esta função (o gerente NÃO gerencia usuários: 403).
+// O admin não pode rebaixar a si mesmo (para "user" ou "gerente") nem se desativar.
 //
 // Respostas: 200 { ok: true, user? } | 4xx/5xx { error } (mensagens pt-BR)
 //
@@ -32,7 +35,12 @@ const UUID_RE =
 const BAN_FOREVER = "876000h"; // ~100 anos
 const PROFILE_COLUMNS = "id, username, nome, role, ativo";
 
-type Role = "admin" | "user";
+const ROLES = ["user", "gerente", "admin"] as const;
+type Role = (typeof ROLES)[number];
+
+function isRole(v: unknown): v is Role {
+  return typeof v === "string" && (ROLES as readonly string[]).includes(v);
+}
 
 interface ProfileDTO {
   id: string;
@@ -106,9 +114,19 @@ function parseAtivo(body: Record<string, unknown>): boolean {
   return v;
 }
 
+const ROLE_ERROR = 'Campo "role" deve ser "user", "gerente" ou "admin".';
+
 function parseRole(body: Record<string, unknown>): Role {
   const v = body["role"];
-  if (v !== "admin" && v !== "user") bad('Campo "role" deve ser "admin" ou "user".');
+  if (!isRole(v)) bad(ROLE_ERROR);
+  return v;
+}
+
+/** role opcional (create): ausente/null => "user". */
+function parseOptionalRole(body: Record<string, unknown>): Role {
+  const v = body["role"];
+  if (v === undefined || v === null) return "user";
+  if (!isRole(v)) bad(ROLE_ERROR);
   return v;
 }
 
@@ -159,7 +177,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     const callerId = userData.user.id;
 
-    // 2. Autorização: precisa ser admin ativo
+    // 2. Autorização: precisa ser admin ativo (gerente => 403)
     const { data: callerProfile, error: callerErr } = await admin
       .from("profiles")
       .select("role, ativo")
@@ -202,6 +220,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const nome = parseNome(body);
         const username = parseUsername(body);
         const password = parsePassword(body);
+        const role = parseOptionalRole(body);
 
         const { data: existing, error: existErr } = await admin
           .from("profiles")
@@ -230,7 +249,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         const { data: profile, error: insertErr } = await admin
           .from("profiles")
-          .insert({ id: newId, username, nome, role: "user", ativo: true })
+          .insert({ id: newId, username, nome, role, ativo: true })
           .select(PROFILE_COLUMNS)
           .single();
         if (insertErr || !profile) {
@@ -299,6 +318,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case "set_role": {
         const userId = parseUserId(body);
         const role = parseRole(body);
+        // Vale para "user" E "gerente": o admin não se rebaixa.
         if (role !== "admin" && userId === callerId) {
           return json(400, { error: "Você não pode remover seu próprio acesso de administrador." });
         }
