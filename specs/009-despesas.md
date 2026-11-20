@@ -28,7 +28,7 @@ unique index (user_id, lower(btrim(nome)))
 despesas (
   id uuid pk default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  categoria_despesa_id uuid not null references categorias_despesa on delete restrict,
+  categoria_despesa_id uuid not null references categorias_despesa,  -- on delete no action (23503; ver decisoes #9)
   data date not null check (data <= current_date + 1),
   valor numeric(10,2) not null check (valor > 0 and valor <= 99999999.99),
   descricao text check (length(descricao) <= 200),

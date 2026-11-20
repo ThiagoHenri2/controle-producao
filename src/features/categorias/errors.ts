@@ -35,7 +35,8 @@ function errorCode(err: unknown): string | undefined {
 /**
  * Traduz erros do Postgres/PostgREST:
  * - 23505 (unique) → nome duplicado
- * - 23503 (FK restrict em lançamentos) → categoria em uso
+ * - 23503 (FK `no action`) e 23001 (FK `restrict`, caso de `lancamentos.categoria_id`)
+ *   → categoria em uso
  * - 23514 (check) → nome/valor inválido
  */
 export function toCategoriaError(err: unknown, fallback: string): CategoriaError {
@@ -45,6 +46,7 @@ export function toCategoriaError(err: unknown, fallback: string): CategoriaError
     case '23505':
       return new CategoriaError('duplicado', CATEGORIA_ERROR_MESSAGES.duplicado, code);
     case '23503':
+    case '23001':
       return new CategoriaError('em_uso', CATEGORIA_ERROR_MESSAGES.emUso, code);
     case '23514':
       return new CategoriaError('invalido', CATEGORIA_ERROR_MESSAGES.invalido, code);

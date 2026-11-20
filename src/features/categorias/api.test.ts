@@ -23,6 +23,13 @@ describe('toCategoriaError', () => {
     expect(toCategoriaError({ code: '23514', message: 'check' }, 'x').kind).toBe('invalido');
   });
 
+  it('trata 23001 (FK restrict de lançamentos, como no banco real) como categoria em uso', () => {
+    expect(toCategoriaError({ code: '23001', message: 'restrict' }, 'x')).toMatchObject({
+      kind: 'em_uso',
+      message: 'Esta categoria já tem lançamentos. Desative-a em vez de excluir.',
+    });
+  });
+
   it('usa o fallback para erros desconhecidos (sem texto técnico)', () => {
     const err = toCategoriaError(new TypeError('Failed to fetch'), 'Falhou.');
     expect(err).toBeInstanceOf(CategoriaError);
