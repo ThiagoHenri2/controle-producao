@@ -19,7 +19,7 @@ export type ResumoEquipe = {
 };
 
 /**
- * Quanto pagar a cada entregador no período (só gestor; senão 42501).
+ * Quanto pagar a cada atendente no período (só gestor; senão 42501).
  * `nomes`: `null` = todas as categorias (`resumo_por_usuario`); um array de nomes
  * normalizados = só as categorias com esses nomes, de todos (`resumo_por_usuario_nomes`).
  */
@@ -44,7 +44,7 @@ function montarResumoEquipe(usuarios: ResumoUsuario[]): ResumoEquipe {
 }
 
 /**
- * Despesas de cada entregador no período (spec 009, só gestor; senão 42501).
+ * Despesas de cada atendente no período (spec 009, só gestor; senão 42501).
  * `quantidade` = nº de despesas. `nomes`: `null` = todas as categorias de despesa
  * (`p_nomes` omitido); um array de nomes normalizados = só essas; `[]` = nenhuma.
  */

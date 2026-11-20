@@ -26,7 +26,10 @@ const categorias = createFakeCategoriasTable();
 const resumo = createFakeResumo();
 
 const MARIA = makeProfile({ id: 'u-maria', nome: 'Maria', username: 'maria', role: 'gerente' });
-const perfil = (p: Perfil): Perfil => p;
+const perfil = (p: Omit<Perfil, 'gerente_id'> & { gerente_id?: string | null }): Perfil => ({
+  gerente_id: null,
+  ...p,
+});
 const PERFIS: Perfil[] = [
   perfil({ id: 'u-maria', nome: 'Maria', username: 'maria', role: 'gerente', ativo: true }),
   perfil({ id: 'u-joao', nome: 'João', username: 'joao', role: 'user', ativo: true }),
@@ -60,7 +63,7 @@ function abrir(path = '/equipe') {
 }
 
 async function itens() {
-  const lista = await screen.findByRole('list', { name: 'Por entregador' });
+  const lista = await screen.findByRole('list', { name: 'Por atendente' });
   return within(lista).getAllByTestId('equipe-item');
 }
 
@@ -183,7 +186,7 @@ describe('EquipePage', () => {
     expect(url()).toBe('/equipe?periodo=semana&nomes=pizza');
   });
 
-  it('tocar num entregador abre o relatório dele com o mesmo período', async () => {
+  it('tocar num atendente abre o relatório dele com o mesmo período', async () => {
     fakeSupabase.addProfiles(makeProfile({ id: 'u-joao', nome: 'João', username: 'joao' }));
     const { user } = abrir('/equipe?periodo=semana');
     await itens();

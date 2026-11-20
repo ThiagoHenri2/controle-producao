@@ -24,6 +24,7 @@ export function makeProfile(overrides: Partial<Profile> = {}): Profile {
     nome: 'João',
     role: 'user',
     ativo: true,
+    gerente_id: null,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
   };
@@ -49,6 +50,8 @@ function createFakeSupabase() {
   const pendingInitial: Listener[] = [];
   /** Controla a resposta do signInWithPassword (para testar o loading). */
   let signInGate: Promise<void> | null = null;
+  /** Código de erro da próxima chamada a `updateUser`. */
+  let nextUpdateUserError: string | null = null;
 
   const emit = (event: AuthChangeEvent) => listeners.forEach((l) => l(event, session));
 
@@ -73,6 +76,44 @@ function createFakeSupabase() {
       session = makeSession(userId);
       emit('SIGNED_IN');
       return { data: { user: session.user, session }, error: null };
+    }),
+    /**
+     * Troca a senha da conta logada (Minha conta, spec 010). Use
+     * `failNextUpdateUser(code)` para simular `weak_password` etc.
+     */
+    updateUser: vi.fn(async ({ password }: { password?: string }) => {
+      const failCode = nextUpdateUserError;
+      nextUpdateUserError = null;
+      if (failCode) {
+        return {
+          data: { user: null },
+          error: { name: 'AuthApiError', status: 422, code: failCode, message: failCode },
+        };
+      }
+      const entry = [...accounts.entries()].find(
+        ([, a]) => session && (a.profile?.id ?? '') === session.user.id,
+      );
+      if (!session || !entry) {
+        return {
+          data: { user: null },
+          error: { name: 'AuthSessionMissingError', status: 400, message: 'no session' },
+        };
+      }
+      if (password !== undefined) {
+        if (password === entry[1].password) {
+          return {
+            data: { user: null },
+            error: {
+              name: 'AuthApiError',
+              status: 422,
+              code: 'same_password',
+              message: 'same_password',
+            },
+          };
+        }
+        accounts.set(entry[0], { ...entry[1], password });
+      }
+      return { data: { user: session.user }, error: null };
     }),
     signOut: vi.fn(async () => {
       session = null;
@@ -117,16 +158,34 @@ function createFakeSupabase() {
     return handler(args ?? {});
   });
 
+  /** Edge Functions (`supabase.functions.invoke`): sucesso `{ ok: true }` por padrão. */
+  const functions = {
+    invoke: vi.fn(
+      async (
+        _fn: string,
+        _opts?: { body?: unknown },
+      ): Promise<{ data: unknown; error: unknown }> => ({ data: { ok: true }, error: null }),
+    ),
+  };
+
   return {
-    client: { auth, from, rpc },
+    client: { auth, from, rpc, functions },
     auth,
     from,
     rpc,
+    functions,
+    /** Senha atual da conta (para conferir trocas de senha). */
+    passwordOf(username: string): string | undefined {
+      return accounts.get(`${username}@entregas.local`)?.password;
+    },
+    failNextUpdateUser(code: string) {
+      nextUpdateUserError = code;
+    },
     /** Cadastra um usuário que pode logar com `${username}@entregas.local`. */
     addAccount(username: string, password: string, profile: Profile | null) {
       accounts.set(`${username}@entregas.local`, { password, profile });
     },
-    /** Cadastra perfis visíveis na listagem de `profiles` (seletor de entregador). */
+    /** Cadastra perfis visíveis na listagem de `profiles` (seletor de atendente). */
     addProfiles(...list: Profile[]) {
       list.forEach((p) => profiles.set(p.id, p));
     },
@@ -175,9 +234,12 @@ function createFakeSupabase() {
       holdInitial = false;
       pendingInitial.length = 0;
       signInGate = null;
+      nextUpdateUserError = null;
       tableHandlers.clear();
       rpcHandlers.clear();
       vi.clearAllMocks();
+      functions.invoke.mockReset();
+      functions.invoke.mockResolvedValue({ data: { ok: true }, error: null });
     },
   };
 }

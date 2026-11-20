@@ -59,7 +59,7 @@ describe('useUsuarioAlvo', () => {
     fakeSupabase.addProfiles(JOAO, ANA, MARIA);
   });
 
-  it('entregador: ignora ?usuario e não lista perfis', () => {
+  it('atendente: ignora ?usuario e não lista perfis', () => {
     const { result } = render(JOAO, '/relatorio?usuario=u-ana');
     expect(result.current.alvo).toMatchObject({
       alvoId: 'u-joao',

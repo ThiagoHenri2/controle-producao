@@ -13,6 +13,8 @@ export const ADMIN_MESSAGES = {
   usernameInvalid: 'Use de 3 a 30 caracteres: letras minúsculas, números, ponto, hífen ou _.',
   passwordMin: `A senha precisa ter pelo menos ${PASSWORD_MIN} caracteres.`,
   roleInvalid: 'Escolha um papel válido.',
+  confirmMismatch: 'As senhas não conferem.',
+  gerenteSoAtendente: 'Só atendentes podem ter um gerente.',
 } as const;
 
 /** trim + minúsculas, igual ao backend. */
@@ -29,21 +31,34 @@ export const usernameSchema = z
 
 export const passwordSchema = z.string().min(PASSWORD_MIN, ADMIN_MESSAGES.passwordMin);
 
-/** Papel: 'user' (Entregador), 'gerente' ou 'admin' (spec 008). */
+/** Papel: 'user' (Atendente), 'gerente' ou 'admin' (spec 008). */
 export const roleSchema = z.enum(ROLES as readonly [ProfileRole, ...ProfileRole[]], {
   error: ADMIN_MESSAGES.roleInvalid,
 });
 
-export const newUserSchema = z.object({
-  nome: z.string().trim().min(1, ADMIN_MESSAGES.nomeRequired).max(80, ADMIN_MESSAGES.nomeMax),
-  username: usernameSchema,
-  password: passwordSchema,
-  role: roleSchema.default('user'),
-});
+export const newUserSchema = z
+  .object({
+    nome: z.string().trim().min(1, ADMIN_MESSAGES.nomeRequired).max(80, ADMIN_MESSAGES.nomeMax),
+    username: usernameSchema,
+    password: passwordSchema,
+    role: roleSchema.default('user'),
+    /** Gerente responsável (spec 010): opcional e só para atendentes. */
+    gerente_id: z.string().min(1).nullable().optional(),
+  })
+  .refine((v) => v.gerente_id == null || v.role === 'user', {
+    message: ADMIN_MESSAGES.gerenteSoAtendente,
+    path: ['gerente_id'],
+  });
 
 export type NewUserInput = z.infer<typeof newUserSchema>;
 
-export const resetPasswordSchema = z.object({ password: passwordSchema });
+/** Nova senha + confirmação (Redefinir senha no admin e na Equipe). */
+export const resetPasswordSchema = z
+  .object({ password: passwordSchema, confirm: z.string() })
+  .refine((v) => v.password === v.confirm, {
+    message: ADMIN_MESSAGES.confirmMismatch,
+    path: ['confirm'],
+  });
 
 /** Converte as issues do Zod em `{ campo: primeira mensagem }`. */
 export function fieldErrorsFrom<K extends string>(error: z.ZodError): Partial<Record<K, string>> {

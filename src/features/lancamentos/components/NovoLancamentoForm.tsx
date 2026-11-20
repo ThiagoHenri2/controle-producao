@@ -10,7 +10,7 @@ import { BarraAcaoFixa } from './BarraAcaoFixa';
 type NovoLancamentoFormProps = {
   /** Só categorias ativas. */
   categorias: ReadonlyArray<Categoria>;
-  /** Dono dos lançamentos (o próprio usuário ou o entregador alvo do gestor). */
+  /** Dono dos lançamentos (o próprio usuário ou o atendente alvo do gestor). */
   userId: string;
   /** Data do lançamento, `yyyy-MM-dd`. */
   data: string;

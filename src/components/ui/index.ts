@@ -19,3 +19,4 @@ export {
   type SegmentedControlProps,
   type SegmentedOption,
 } from './SegmentedControl';
+export { PasswordInput, type PasswordInputProps } from './PasswordInput';

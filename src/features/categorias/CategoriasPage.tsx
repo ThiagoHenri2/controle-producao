@@ -8,7 +8,7 @@ const ID_ABAS = 'categorias-aba';
 
 /**
  * Categorias (spec 003) com as abas Entregas | Despesas (`?aba=`, spec 009).
- * O gestor gerencia as de qualquer entregador (spec 008).
+ * O gestor gerencia as de qualquer atendente (spec 008).
  */
 export function CategoriasPage() {
   const alvo = useUsuarioAlvo();

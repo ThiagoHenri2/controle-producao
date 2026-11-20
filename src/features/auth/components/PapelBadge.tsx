@@ -8,7 +8,7 @@ const STYLES: Record<ProfileRole, string> = {
   admin: 'bg-primary-soft text-primary-hover',
 };
 
-/** Selo "Entregador" / "Gerente" / "Admin". */
+/** Selo "Atendente" / "Gerente" / "Admin". */
 export function PapelBadge({ role, className }: { role: ProfileRole; className?: string }) {
   return (
     <span

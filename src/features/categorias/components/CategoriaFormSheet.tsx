@@ -28,7 +28,7 @@ type CategoriaFormSheetProps = {
   tipo?: TipoCategoria;
   /** `null` = nova categoria. */
   categoria: CategoriaLista | null;
-  /** Dono da categoria nova (o próprio usuário ou o entregador alvo do gestor). */
+  /** Dono da categoria nova (o próprio usuário ou o atendente alvo do gestor). */
   userId: string;
   /** Lista completa (ativas e inativas) do dono, para checar nome duplicado. */
   existentes: ReadonlyArray<Pick<CategoriaLista, 'id' | 'nome'>>;

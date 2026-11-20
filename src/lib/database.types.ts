@@ -189,6 +189,8 @@ export type Database = {
         Row: {
           ativo: boolean;
           created_at: string;
+          /** Gerente responsável (migration 0008). Só atendentes (`role = 'user'`) têm. */
+          gerente_id: string | null;
           id: string;
           nome: string;
           role: ProfileRole;
@@ -197,6 +199,7 @@ export type Database = {
         Insert: {
           ativo?: boolean;
           created_at?: string;
+          gerente_id?: string | null;
           id: string;
           nome: string;
           role?: ProfileRole;
@@ -205,6 +208,7 @@ export type Database = {
         Update: {
           ativo?: boolean;
           created_at?: string;
+          gerente_id?: string | null;
           id?: string;
           nome?: string;
           role?: ProfileRole;
@@ -224,6 +228,13 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean };
       is_ativo: { Args: never; Returns: boolean };
       is_gestor: { Args: never; Returns: boolean };
+      // Migration 0008 (spec 010): gerente do chamador (0 ou 1 linha).
+      meu_gerente: {
+        Args: never;
+        Returns: { id: string; nome: string; username: string }[];
+      };
+      /** Migration 0008: o chamador pode operar os dados de `p_alvo`? */
+      pode_gerir: { Args: { p_alvo: string }; Returns: boolean };
       // Migrations 0003_resumo.sql e 0005_resumo_filtro_categorias.sql (spec 005).
       // `p_categorias` omitido/null = todas as categorias.
       // `p_usuario` (0006) omitido/null = o próprio usuário; outro id exige gestor (42501).

@@ -100,7 +100,7 @@ describe('fetchResumo', () => {
     expect(err).toMatchObject({ kind: 'periodo_invalido', message: error.message });
   });
 
-  it('envia p_usuario só para outro entregador (gestor); 42501 vira "acesso negado"', async () => {
+  it('envia p_usuario só para outro atendente (gestor); 42501 vira "acesso negado"', async () => {
     fakeSupabase.setRpcHandler('resumo_por_categoria', () => ({ data: [], error: null }));
     fakeSupabase.setRpcHandler('resumo_por_dia', () => ({ data: [], error: null }));
     await fetchResumo('2026-11-01', '2026-11-30', null, 'u-joao');

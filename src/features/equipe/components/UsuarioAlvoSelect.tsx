@@ -15,7 +15,7 @@ type UsuarioAlvoSelectProps = {
 };
 
 /**
- * Seletor do entregador alvo (só gestor, spec 008): botão "Lançando para: Eu ▾"
+ * Seletor do atendente alvo (só gestor, spec 008): botão "Lançando para: Eu ▾"
  * que abre um BottomSheet com "Eu" e os perfis ativos. Fora do próprio usuário,
  * o bloco fica em destaque (índigo) com a faixa "Você está … como gestor para …".
  */
@@ -105,18 +105,18 @@ function UsuarioAlvoSheet({ alvo, onEscolher, onClose }: UsuarioAlvoSheetProps) 
   );
 
   return (
-    <BottomSheet open title="Escolher entregador" onClose={onClose}>
+    <BottomSheet open title="Escolher atendente" onClose={onClose}>
       {perfis.isPending ? (
-        <SkeletonList rows={3} label="Carregando entregadores…" />
+        <SkeletonList rows={3} label="Carregando atendentes…" />
       ) : perfis.isError ? (
         <div className="flex flex-col gap-3 text-center">
-          <p className="text-sm text-slate-700">Não foi possível carregar os entregadores.</p>
+          <p className="text-sm text-slate-700">Não foi possível carregar os atendentes.</p>
           <Button variant="secondary" loading={perfis.isFetching} onClick={() => perfis.refetch()}>
             Tentar de novo
           </Button>
         </div>
       ) : (
-        <ul aria-label="Entregadores" className="-mx-2 flex flex-col">
+        <ul aria-label="Atendentes" className="-mx-2 flex flex-col">
           <Opcao
             nome="Eu"
             detalhe="Meus próprios dados"

@@ -6,11 +6,34 @@ import type { AdminUser } from '../api';
 type UserListItemProps = {
   user: AdminUser;
   isSelf: boolean;
+  /** Atendente: nome do gerente (`null` = sem gerente). */
+  gerenteNome?: string | null;
+  /** Gerente: nº de atendentes vinculados. */
+  atendentes?: number;
   onOpenActions: (user: AdminUser) => void;
 };
 
-/** Linha da lista: nome, @usuário, papel, ativo/inativo e menu ⋮. */
-export function UserListItem({ user, isSelf, onOpenActions }: UserListItemProps) {
+function textoAtendentes(n: number): string {
+  if (n === 0) return 'Sem atendentes';
+  return n === 1 ? '1 atendente' : `${n} atendentes`;
+}
+
+/** Vínculo da spec 010: "Gerente: X" / "Sem gerente" (atendente) ou "N atendentes" (gerente). */
+function vinculo(user: AdminUser, gerenteNome?: string | null, atendentes?: number) {
+  if (user.role === 'user') return gerenteNome ? `Gerente: ${gerenteNome}` : 'Sem gerente';
+  if (user.role === 'gerente') return textoAtendentes(atendentes ?? 0);
+  return null;
+}
+
+/** Linha da lista: nome, @usuário, papel, vínculo de gerente, ativo/inativo e menu ⋮. */
+export function UserListItem({
+  user,
+  isSelf,
+  gerenteNome,
+  atendentes,
+  onOpenActions,
+}: UserListItemProps) {
+  const textoVinculo = vinculo(user, gerenteNome, atendentes);
   return (
     <li className="flex items-center gap-2 rounded-xl border border-slate-200 bg-surface py-2 pl-4 pr-1 shadow-sm">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-1">
@@ -30,6 +53,11 @@ export function UserListItem({ user, isSelf, onOpenActions }: UserListItemProps)
           <span aria-hidden>·</span>
           <PapelBadge role={user.role} />
         </div>
+        {textoVinculo && (
+          <p className="truncate text-sm text-slate-600" data-testid="usuario-vinculo">
+            {textoVinculo}
+          </p>
+        )}
       </div>
 
       <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-600">

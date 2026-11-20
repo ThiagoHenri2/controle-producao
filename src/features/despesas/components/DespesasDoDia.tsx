@@ -11,7 +11,7 @@ import { DespesaItem } from './DespesaItem';
 import { EditarDespesaSheet } from './EditarDespesaSheet';
 
 type DespesasDoDiaProps = {
-  /** Dono da lista (o próprio usuário ou o entregador alvo do gestor). */
+  /** Dono da lista (o próprio usuário ou o atendente alvo do gestor). */
   userId: string;
   data: string;
 };

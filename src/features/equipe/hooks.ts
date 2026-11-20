@@ -28,7 +28,7 @@ import {
 } from './nomes';
 
 /**
- * Perfis (todos, por nome) para o seletor de entregador e a Equipe. Mesma query
+ * Perfis (todos, por nome) para o seletor de atendente e a Equipe. Mesma query
  * da tela de admin (`adminKeys.users()`), que já é invalidada pelas mutations de usuário.
  */
 export function usePerfis({ enabled = true }: { enabled?: boolean } = {}) {
@@ -41,7 +41,7 @@ export function usePerfis({ enabled = true }: { enabled?: boolean } = {}) {
 }
 
 /**
- * Resumo por entregador. A key fica sob `['resumo']`, então as mutations de
+ * Resumo por atendente. A key fica sob `['resumo']`, então as mutations de
  * lançamento (que invalidam esse prefixo) também atualizam a Equipe.
  */
 export function useResumoEquipe(
@@ -57,7 +57,7 @@ export function useResumoEquipe(
   });
 }
 
-/** Despesas por entregador (spec 009). Key sob `['resumo']`, invalidada pelas despesas. */
+/** Despesas por atendente (spec 009). Key sob `['resumo']`, invalidada pelas despesas. */
 export function useResumoEquipeDespesas(
   de: string,
   ate: string,

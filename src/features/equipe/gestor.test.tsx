@@ -84,7 +84,7 @@ function entrarComo(profile: typeof MARIA) {
   resumo.setAuth(profile.id, profile.role !== 'user');
 }
 
-describe('gestor lança, ajusta categorias e vê relatório de outro entregador', () => {
+describe('gestor lança, ajusta categorias e vê relatório de outro atendente', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 10, 20, 12, 0, 0));
@@ -117,7 +117,7 @@ describe('gestor lança, ajusta categorias e vê relatório de outro entregador'
     expect(screen.queryByText(/como gestor para/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Lançando para: Eu' }));
-    const sheet = screen.getByRole('dialog', { name: 'Escolher entregador' });
+    const sheet = screen.getByRole('dialog', { name: 'Escolher atendente' });
     const opcoes = await within(sheet).findAllByRole('button', { name: /Eu|João|Ana/ });
     expect(opcoes.map((b) => b.textContent)).toEqual([
       expect.stringContaining('Eu'),
@@ -244,7 +244,7 @@ describe('gestor lança, ajusta categorias e vê relatório de outro entregador'
     expect(categorias.rows.find((c) => c.id === 'cat-jp')?.valor_unitario).toBe(6);
   });
 
-  it('Relatório do João envia p_usuario; trocar de entregador limpa cats e mantém o período', async () => {
+  it('Relatório do João envia p_usuario; trocar de atendente limpa cats e mantém o período', async () => {
     resumo.seed([
       {
         user_id: 'u-joao',
@@ -270,7 +270,7 @@ describe('gestor lança, ajusta categorias e vê relatório de outro entregador'
 
     await user.click(screen.getByRole('button', { name: 'Relatório de: João' }));
     await user.click(
-      within(screen.getByRole('dialog', { name: 'Escolher entregador' })).getByRole('button', {
+      within(screen.getByRole('dialog', { name: 'Escolher atendente' })).getByRole('button', {
         name: /Ana/,
       }),
     );
@@ -283,13 +283,13 @@ describe('gestor lança, ajusta categorias e vê relatório de outro entregador'
       usuario: 'u-ana',
     });
 
-    // Trocar o período preserva o entregador.
+    // Trocar o período preserva o atendente.
     await user.click(screen.getByRole('button', { name: 'Mês' }));
     expect(url()).toBe('/relatorio?periodo=mes&usuario=u-ana');
   });
 });
 
-describe('selo "por <nome>" para o entregador', () => {
+describe('selo "por <nome>" para o atendente', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 10, 20, 12, 0, 0));
@@ -345,7 +345,7 @@ describe('selo "por <nome>" para o entregador', () => {
     ]);
     abrir('/?usuario=u-ana');
     const lista = await screen.findByRole('list', { name: 'Já lançado hoje' });
-    // Entregador: ?usuario é ignorado, nada de seletor.
+    // Atendente: ?usuario é ignorado, nada de seletor.
     expect(screen.queryByRole('button', { name: /Lançando para:/ })).not.toBeInTheDocument();
     await waitFor(() => expect(within(lista).getAllByTestId('selo-autor')).toHaveLength(2));
     const itens = within(lista).getAllByRole('listitem');

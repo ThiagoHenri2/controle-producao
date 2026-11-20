@@ -8,13 +8,20 @@ import { supabase } from '@/lib/supabase';
 import type { NewUserInput } from './schemas';
 
 /** Dados de usuário que a tela de admin mostra (nada de lançamentos/valores). */
-export type AdminUser = Pick<Tables<'profiles'>, 'id' | 'username' | 'nome' | 'role' | 'ativo'>;
+export type AdminUser = Pick<
+  Tables<'profiles'>,
+  'id' | 'username' | 'nome' | 'role' | 'ativo' | 'gerente_id'
+>;
+
+/** Usuário-alvo mínimo para as ações (ex.: redefinir senha a partir da Equipe). */
+export type UserRef = Pick<AdminUser, 'id' | 'nome' | 'username'>;
 
 export type AdminUsersRequest =
   | ({ action: 'create' } & NewUserInput)
   | { action: 'reset_password'; user_id: string; password: string }
   | { action: 'set_active'; user_id: string; ativo: boolean }
-  | { action: 'set_role'; user_id: string; role: ProfileRole };
+  | { action: 'set_role'; user_id: string; role: ProfileRole }
+  | { action: 'set_gerente'; user_id: string; gerente_id: string | null };
 
 export type AdminUsersResponse = { ok: true; user?: AdminUser };
 
@@ -103,11 +110,14 @@ export async function invokeAdminUsers(body: AdminUsersRequest): Promise<AdminUs
   return result.data;
 }
 
-/** Lista de usuários (a RLS libera todos os profiles ao admin), ordenada por nome. */
+/**
+ * Lista de usuários visíveis pela RLS, ordenada por nome: todos para o admin;
+ * o gerente vê ele mesmo + os atendentes dele (migration 0008).
+ */
 export async function listProfiles(): Promise<AdminUser[]> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, nome, role, ativo')
+    .select('id, username, nome, role, ativo, gerente_id')
     .order('nome', { ascending: true });
   if (error) throw error;
   return data;
@@ -123,3 +133,7 @@ export const setUserActive = (userId: string, ativo: boolean) =>
 
 export const setUserRole = (userId: string, role: ProfileRole) =>
   invokeAdminUsers({ action: 'set_role', user_id: userId, role });
+
+/** Vincula o atendente a um gerente ativo (`null` = sem gerente). Só admin. */
+export const setUserGerente = (userId: string, gerenteId: string | null) =>
+  invokeAdminUsers({ action: 'set_gerente', user_id: userId, gerente_id: gerenteId });

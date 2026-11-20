@@ -39,6 +39,7 @@ const joao: AdminUser = {
   username: 'joao',
   role: 'user',
   ativo: true,
+  gerente_id: null,
 };
 const maria: AdminUser = {
   id: 'u-maria',
@@ -46,6 +47,7 @@ const maria: AdminUser = {
   username: 'maria',
   role: 'user',
   ativo: false,
+  gerente_id: null,
 };
 
 function httpError(status: number, error: string) {
@@ -96,7 +98,14 @@ async function openNewUser() {
 describe('UsuariosPage', () => {
   beforeEach(() => {
     mock.users = [
-      { id: admin.id, nome: admin.nome, username: admin.username, role: 'admin', ativo: true },
+      {
+        id: admin.id,
+        nome: admin.nome,
+        username: admin.username,
+        role: 'admin',
+        ativo: true,
+        gerente_id: null,
+      },
       joao,
       maria,
     ];
@@ -111,7 +120,7 @@ describe('UsuariosPage', () => {
     expect(items).toHaveLength(3);
     expect(items[1]).toHaveTextContent('João Silva');
     expect(items[1]).toHaveTextContent('@joao');
-    expect(items[1]).toHaveTextContent('Entregador');
+    expect(items[1]).toHaveTextContent('Atendente');
     expect(items[1]).toHaveTextContent('Ativo');
     expect(items[2]).toHaveTextContent('Inativo');
     expect(items[0]).toHaveTextContent('Admin');
@@ -167,7 +176,7 @@ describe('UsuariosPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Usuário pedro.s criado.');
   });
 
-  it('cria um gerente pelo select "Papel" (Entregador é o padrão)', async () => {
+  it('cria um gerente pelo select "Papel" (Atendente é o padrão)', async () => {
     renderPage();
     const { user, dialog } = await openNewUser();
     const papel = within(dialog).getByLabelText('Papel');
@@ -176,7 +185,7 @@ describe('UsuariosPage', () => {
       within(papel)
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Entregador', 'Gerente', 'Admin']);
+    ).toEqual(['Atendente', 'Gerente', 'Admin']);
     await user.type(within(dialog).getByLabelText('Nome'), 'Maria');
     await user.type(within(dialog).getByLabelText('Usuário'), 'maria2');
     await user.type(within(dialog).getByLabelText('Senha'), '123456');
@@ -194,10 +203,10 @@ describe('UsuariosPage', () => {
     });
   });
 
-  it('menu de papel: gerente, admin e entregador, com confirmação', async () => {
+  it('menu de papel: gerente, admin e atendente, com confirmação', async () => {
     mock.users = [
       ...mock.users,
-      { id: 'u-gil', nome: 'Gil', username: 'gil', role: 'gerente', ativo: true },
+      { id: 'u-gil', nome: 'Gil', username: 'gil', role: 'gerente', ativo: true, gerente_id: null },
     ];
     const user = userEvent.setup();
     renderPage();
@@ -207,11 +216,11 @@ describe('UsuariosPage', () => {
       .find((li) => within(li).queryByText('Gil'));
     expect(gil).toHaveTextContent('Gerente');
 
-    // Entregador: pode virar gerente ou admin.
+    // Atendente: pode virar gerente ou admin.
     await user.click(screen.getByRole('button', { name: 'Ações de João Silva' }));
     expect(screen.getByRole('button', { name: 'Tornar gerente' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tornar admin' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Tornar entregador' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tornar atendente' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Tornar gerente' }));
     const confirm = screen.getByRole('alertdialog', { name: 'Tornar João Silva gerente?' });
     expect(mock.invoke).not.toHaveBeenCalled();
@@ -222,14 +231,14 @@ describe('UsuariosPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('João Silva agora é gerente.');
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
 
-    // Gerente: pode virar admin ou entregador.
+    // Gerente: pode virar admin ou atendente.
     await user.click(screen.getByRole('button', { name: 'Ações de Gil' }));
     expect(screen.queryByRole('button', { name: 'Tornar gerente' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Tornar entregador' }));
+    await user.click(screen.getByRole('button', { name: 'Tornar atendente' }));
     await user.click(
-      within(screen.getByRole('alertdialog', { name: 'Tornar Gil entregador?' })).getByRole(
+      within(screen.getByRole('alertdialog', { name: 'Tornar Gil atendente?' })).getByRole(
         'button',
-        { name: 'Tornar entregador' },
+        { name: 'Tornar atendente' },
       ),
     );
     expect(mock.invoke).toHaveBeenLastCalledWith('admin-users', {
@@ -318,6 +327,13 @@ describe('UsuariosPage', () => {
     await user.click(screen.getByRole('button', { name: 'Redefinir senha' }));
     const sheet = screen.getByRole('dialog', { name: 'Redefinir senha' });
     await user.type(within(sheet).getByLabelText('Nova senha'), '654321');
+    await user.type(within(sheet).getByLabelText('Confirmar nova senha'), '654320');
+    await user.click(within(sheet).getByRole('button', { name: 'Salvar senha' }));
+    expect(within(sheet).getByText('As senhas não conferem.')).toBeInTheDocument();
+    expect(mock.invoke).toHaveBeenCalledTimes(1);
+
+    await user.clear(within(sheet).getByLabelText('Confirmar nova senha'));
+    await user.type(within(sheet).getByLabelText('Confirmar nova senha'), '654321');
     await user.click(within(sheet).getByRole('button', { name: 'Salvar senha' }));
     expect(mock.invoke).toHaveBeenLastCalledWith('admin-users', {
       body: { action: 'reset_password', user_id: 'u-maria', password: '654321' },
@@ -328,5 +344,210 @@ describe('UsuariosPage', () => {
     renderPage();
     await screen.findByRole('list', { name: 'Usuários' });
     expect(document.body.textContent).not.toMatch(/R\$/);
+  });
+});
+
+describe('UsuariosPage — atendentes por gerente (spec 010)', () => {
+  const gil: AdminUser = {
+    id: 'u-gil',
+    nome: 'Gil Gerente',
+    username: 'gil',
+    role: 'gerente',
+    ativo: true,
+    gerente_id: null,
+  };
+  const lia: AdminUser = {
+    id: 'u-lia',
+    nome: 'Lia Inativa',
+    username: 'lia',
+    role: 'gerente',
+    ativo: false,
+    gerente_id: null,
+  };
+  const bia: AdminUser = {
+    id: 'u-bia',
+    nome: 'Bia',
+    username: 'bia',
+    role: 'user',
+    ativo: true,
+    gerente_id: 'u-gil',
+  };
+
+  beforeEach(() => {
+    mock.users = [
+      {
+        id: admin.id,
+        nome: admin.nome,
+        username: admin.username,
+        role: 'admin',
+        ativo: true,
+        gerente_id: null,
+      },
+      bia,
+      gil,
+      { ...joao, gerente_id: 'u-gil' },
+      lia,
+      maria,
+    ];
+    mock.invoke.mockReset();
+    mock.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+  });
+
+  const linha = async (nome: string) => {
+    const list = await screen.findByRole('list', { name: 'Usuários' });
+    const li = within(list)
+      .getAllByRole('listitem')
+      .find((item) => within(item).queryByText(nome));
+    if (!li) throw new Error(`linha ${nome} não encontrada`);
+    return li;
+  };
+
+  it('atendente mostra "Gerente: X" ou "Sem gerente"; gerente mostra "N atendentes"', async () => {
+    renderPage();
+    expect(await linha('João Silva')).toHaveTextContent('Gerente: Gil Gerente');
+    expect(await linha('Bia')).toHaveTextContent('Gerente: Gil Gerente');
+    expect(await linha('Maria')).toHaveTextContent('Sem gerente');
+    expect(await linha('Gil Gerente')).toHaveTextContent('2 atendentes');
+    expect(await linha('Lia Inativa')).toHaveTextContent('Sem atendentes');
+    expect(within(await linha('Ana Admin')).queryByTestId('usuario-vinculo')).toBeNull();
+  });
+
+  it('selo e textos usam "Atendente" (nada de "Entregador")', async () => {
+    renderPage();
+    expect(await linha('Maria')).toHaveTextContent('Atendente');
+    expect(document.body.textContent).not.toMatch(/entregador/i);
+  });
+
+  it('"Definir gerente…" só no menu do atendente', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Ações de Gil Gerente' }));
+    expect(screen.queryByRole('button', { name: 'Definir gerente…' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tornar atendente' })).toBeInTheDocument();
+  });
+
+  it('Definir gerente: lista gerentes ativos + Nenhum, marca o atual e chama set_gerente', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Ações de Maria' }));
+    await user.click(screen.getByRole('button', { name: 'Definir gerente…' }));
+
+    const sheet = screen.getByRole('dialog', { name: 'Definir gerente' });
+    const opcoes = within(within(sheet).getByRole('list', { name: 'Gerentes' })).getAllByRole(
+      'button',
+    );
+    // Só gerentes ATIVOS (Lia está inativa) + "Nenhum".
+    expect(opcoes.map((o) => o.textContent)).toEqual([
+      'Gil Gerente@gil',
+      'NenhumSem gerente responsável',
+    ]);
+    expect(opcoes[1]).toHaveAttribute('aria-current', 'true');
+
+    await user.click(opcoes[0]!);
+    expect(mock.invoke).toHaveBeenCalledWith('admin-users', {
+      body: { action: 'set_gerente', user_id: 'u-maria', gerente_id: 'u-gil' },
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Maria agora é atendente de Gil Gerente.',
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('Definir gerente "Nenhum" envia gerente_id null', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Ações de João Silva' }));
+    await user.click(screen.getByRole('button', { name: 'Definir gerente…' }));
+    const sheet = screen.getByRole('dialog', { name: 'Definir gerente' });
+    expect(within(sheet).getByRole('button', { name: /Gil Gerente/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await user.click(within(sheet).getByRole('button', { name: /Nenhum/ }));
+    expect(mock.invoke).toHaveBeenCalledWith('admin-users', {
+      body: { action: 'set_gerente', user_id: 'u-joao', gerente_id: null },
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('João Silva ficou sem gerente.');
+  });
+
+  it('Definir gerente: erro 400 da função aparece no sheet', async () => {
+    mock.invoke.mockResolvedValue(
+      httpError(400, 'O gerente informado precisa ser um gerente ativo.'),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Ações de Maria' }));
+    await user.click(screen.getByRole('button', { name: 'Definir gerente…' }));
+    const sheet = screen.getByRole('dialog', { name: 'Definir gerente' });
+    await user.click(within(sheet).getByRole('button', { name: /Gil Gerente/ }));
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent(
+      'O gerente informado precisa ser um gerente ativo.',
+    );
+  });
+
+  it('Novo usuário: "Gerente responsável" só para Atendente e vai no create', async () => {
+    renderPage();
+    const { user, dialog } = await openNewUser();
+    const select = within(dialog).getByLabelText('Gerente responsável');
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Nenhum', 'Gil Gerente']);
+
+    await user.selectOptions(within(dialog).getByLabelText('Papel'), 'gerente');
+    expect(within(dialog).queryByLabelText('Gerente responsável')).not.toBeInTheDocument();
+    await user.selectOptions(within(dialog).getByLabelText('Papel'), 'user');
+
+    await user.type(within(dialog).getByLabelText('Nome'), 'Caio');
+    await user.type(within(dialog).getByLabelText('Usuário'), 'caio');
+    await user.type(within(dialog).getByLabelText('Senha'), '123456');
+    await user.selectOptions(within(dialog).getByLabelText('Gerente responsável'), 'u-gil');
+    await user.click(within(dialog).getByRole('button', { name: 'Criar' }));
+
+    expect(mock.invoke).toHaveBeenCalledWith('admin-users', {
+      body: {
+        action: 'create',
+        nome: 'Caio',
+        username: 'caio',
+        password: '123456',
+        role: 'user',
+        gerente_id: 'u-gil',
+      },
+    });
+  });
+
+  it('Novo usuário: o gerente escolhido não vai junto se o papel virar Gerente', async () => {
+    renderPage();
+    const { user, dialog } = await openNewUser();
+    await user.type(within(dialog).getByLabelText('Nome'), 'Caio');
+    await user.type(within(dialog).getByLabelText('Usuário'), 'caio');
+    await user.type(within(dialog).getByLabelText('Senha'), '123456');
+    await user.selectOptions(within(dialog).getByLabelText('Gerente responsável'), 'u-gil');
+    await user.selectOptions(within(dialog).getByLabelText('Papel'), 'gerente');
+    await user.click(within(dialog).getByRole('button', { name: 'Criar' }));
+    const body = (mock.invoke.mock.calls[0]?.[1] as { body: Record<string, unknown> }).body;
+    expect(body).not.toHaveProperty('gerente_id');
+    expect(body.role).toBe('gerente');
+  });
+
+  it('Novo usuário: 400 sobre o gerente aparece abaixo do select', async () => {
+    mock.invoke.mockResolvedValue(
+      httpError(400, 'O gerente informado precisa ser um gerente ativo.'),
+    );
+    renderPage();
+    const { user, dialog } = await openNewUser();
+    await user.type(within(dialog).getByLabelText('Nome'), 'Caio');
+    await user.type(within(dialog).getByLabelText('Usuário'), 'caio');
+    await user.type(within(dialog).getByLabelText('Senha'), '123456');
+    await user.selectOptions(within(dialog).getByLabelText('Gerente responsável'), 'u-gil');
+    await user.click(within(dialog).getByRole('button', { name: 'Criar' }));
+    expect(
+      await within(dialog).findByText('O gerente informado precisa ser um gerente ativo.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Gerente responsável')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
   });
 });

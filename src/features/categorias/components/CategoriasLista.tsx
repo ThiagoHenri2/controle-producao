@@ -32,7 +32,7 @@ const TEXTOS = {
 type CategoriasListaProps = {
   /** `entregas` (spec 003) ou `despesas` (spec 009, sem valor). */
   tipo: TipoCategoria;
-  /** Dono das categorias: o próprio usuário ou o entregador alvo do gestor (spec 008). */
+  /** Dono das categorias: o próprio usuário ou o atendente alvo do gestor (spec 008). */
   alvo: UsuarioAlvo;
 };
 

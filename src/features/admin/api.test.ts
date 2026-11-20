@@ -51,7 +51,7 @@ describe('newUserSchema (igual ao backend)', () => {
     });
   });
 
-  it('role: entregador por padrão; aceita gerente e admin; rejeita outros', () => {
+  it('role: atendente por padrão; aceita gerente e admin; rejeita outros', () => {
     const base = { nome: 'X', username: 'abc', password: '123456' };
     expect(newUserSchema.parse({ ...base, role: 'gerente' }).role).toBe('gerente');
     expect(newUserSchema.parse({ ...base, role: 'admin' }).role).toBe('admin');

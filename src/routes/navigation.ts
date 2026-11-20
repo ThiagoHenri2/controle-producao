@@ -8,6 +8,7 @@ export const ROUTES = {
   categorias: '/categorias',
   equipe: '/equipe',
   usuarios: '/admin/usuarios',
+  conta: '/conta',
 } as const;
 
 const baseItems: BottomNavItem[] = [
@@ -21,7 +22,7 @@ const adminItem: BottomNavItem = { to: ROUTES.usuarios, label: 'Usuários', icon
 
 /**
  * Itens da BottomNav por papel (spec 008):
- * entregador: Lançar · Relatório · Categorias; gerente: + Equipe; admin: + Equipe + Usuários.
+ * atendente: Lançar · Relatório · Categorias; gerente: + Equipe; admin: + Equipe + Usuários.
  */
 export function getNavItems({
   isAdmin,
@@ -42,6 +43,7 @@ const titles: Record<string, string> = {
   [ROUTES.categorias]: 'Categorias',
   [ROUTES.equipe]: 'Equipe',
   [ROUTES.usuarios]: 'Usuários',
+  [ROUTES.conta]: 'Minha conta',
 };
 
 /** Título exibido no PageHeader para o caminho atual. */

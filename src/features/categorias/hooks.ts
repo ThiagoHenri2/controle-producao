@@ -32,7 +32,7 @@ export type CategoriaLista = CategoriaDespesa & { valor_unitario?: number | stri
 
 /**
  * Query keys de categorias. As listas são por dono (`userId`): o gestor vê as
- * categorias do entregador alvo (spec 008).
+ * categorias do atendente alvo (spec 008).
  */
 export const categoriaKeys = {
   all: ['categorias'] as const,

@@ -1,7 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, FilterX, Users } from 'lucide-react';
+import { AlertCircle, FilterX, KeyRound, Users } from 'lucide-react';
 import { Button, EmptyState, SegmentedControl } from '@/components/ui';
+import type { UserRef } from '@/features/admin/api';
+import { AdminSheet } from '@/features/admin/components/AdminSheet';
+import { ResetPasswordSheet } from '@/features/admin/components/ResetPasswordSheet';
+import { SheetActionList } from '@/features/admin/components/UserActionsList';
+import { useAuth } from '@/features/auth/auth-context';
 import { CategoriasFiltroButton } from '@/features/relatorio/components/CategoriasFiltroButton';
 import { CategoriasSheet } from '@/features/relatorio/components/CategoriasSheet';
 import { PeriodoChips } from '@/features/relatorio/components/PeriodoChips';
@@ -22,7 +27,7 @@ import { toSearchString } from '@/features/relatorio/filtroCategorias';
 import { ROUTES } from '@/routes/navigation';
 import { EquipeLista } from './components/EquipeLista';
 import { useNomesFiltro, useResumoEquipe, useResumoEquipeDespesas } from './hooks';
-import { combinarEquipe } from './ordenar';
+import { combinarEquipe, type LinhaEquipe } from './ordenar';
 import { USUARIO_PARAM } from './useUsuarioAlvo';
 
 type Filtro = ReturnType<typeof useNomesFiltro>;
@@ -43,7 +48,7 @@ function resumoFiltro(
 }
 
 /**
- * Equipe (spec 008, só gestor): quanto pagar a cada entregador no período e o
+ * Equipe (spec 008, só gestor): quanto pagar a cada atendente no período e o
  * total de todos, com filtro por nome de categoria. Tipo Receitas | Despesas |
  * Ambos (spec 009): em Ambos, receitas, despesas e saldo por pessoa. Estado na
  * URL (`periodo`/`de`/`ate`/`tipo`/`nomes`/`dnomes`).
@@ -65,6 +70,16 @@ export function EquipePage() {
   });
   const [sheetAberto, setSheetAberto] = useState(false);
   const [filtroAberto, setFiltroAberto] = useState(false);
+  const { profile, isAdmin } = useAuth();
+  const [acoesPara, setAcoesPara] = useState<UserRef | null>(null);
+  const [senhaPara, setSenhaPara] = useState<UserRef | null>(null);
+
+  /**
+   * "Redefinir senha" (spec 010): o admin, para todos menos ele mesmo; o gerente,
+   * para os atendentes dele (as linhas `user` que a RPC devolve a ele).
+   */
+  const podeRedefinir = (l: LinhaEquipe) =>
+    l.user_id !== profile?.id && (isAdmin || l.role === 'user');
 
   const secoes = [
     ...(comReceitas ? [{ titulo: 'Entregas', filtro: filtroR }] : []),
@@ -81,7 +96,7 @@ export function EquipePage() {
   const filtros = secoes.map((s) => s.filtro);
   const filtrando = filtros.some((f) => f.selecionadas !== null);
 
-  /** Relatório do entregador com o mesmo período e o mesmo tipo. */
+  /** Relatório do atendente com o mesmo período e o mesmo tipo. */
   const linkPara = (userId: string) => {
     const params = periodoToSearchParams(periodo);
     params.set(USUARIO_PARAM, userId);
@@ -135,8 +150,8 @@ export function EquipePage() {
       conteudo = (
         <EmptyState
           icon={Users}
-          title="Nenhum entregador cadastrado"
-          description="Os entregadores são cadastrados pelo admin, em Usuários."
+          title="Nenhum atendente cadastrado"
+          description="Os atendentes são cadastrados pelo admin, em Usuários."
         />
       );
     } else {
@@ -178,6 +193,8 @@ export function EquipePage() {
             linhas={linhas}
             totalGeral={(tipo === 'despesas' ? d?.totalGeral : r?.totalGeral) ?? 0}
             linkPara={linkPara}
+            temAcoes={podeRedefinir}
+            onAcoes={(l) => setAcoesPara({ id: l.user_id, nome: l.nome, username: l.username })}
           />
         </div>
       );
@@ -227,6 +244,25 @@ export function EquipePage() {
           }}
         />
       )}
+
+      <AdminSheet
+        open={acoesPara !== null}
+        title={acoesPara?.nome ?? ''}
+        description={acoesPara ? `@${acoesPara.username}` : undefined}
+        onClose={() => setAcoesPara(null)}
+      >
+        <SheetActionList
+          items={[
+            { key: 'reset', action: 'reset' as const, label: 'Redefinir senha', icon: KeyRound },
+          ]}
+          onSelect={() => {
+            setSenhaPara(acoesPara);
+            setAcoesPara(null);
+          }}
+        />
+      </AdminSheet>
+
+      {senhaPara && <ResetPasswordSheet user={senhaPara} onClose={() => setSenhaPara(null)} />}
 
       {filtroAberto && (
         <CategoriasSheet

@@ -25,7 +25,7 @@ export type FiltroCategorias = readonly string[] | null;
 
 /**
  * Usuário do relatório enviado às RPCs (spec 008): `null` = o próprio (o
- * parâmetro `p_usuario` é omitido); um id = esse entregador (só gestor; senão 42501).
+ * parâmetro `p_usuario` é omitido); um id = esse atendente (só gestor; senão 42501).
  */
 export type UsuarioResumo = string | null;
 
@@ -82,7 +82,7 @@ function montarResumo(categorias: ResumoCategoria[], dias: ResumoDia[]): Resumo 
 
 /**
  * Chama as duas RPCs em paralelo. Valores e total vêm prontos do banco, já
- * filtrados pelas categorias quando houver filtro. `usuario` (só gestor) escolhe o entregador.
+ * filtrados pelas categorias quando houver filtro. `usuario` (só gestor) escolhe o atendente.
  */
 export async function fetchResumo(
   de: string,

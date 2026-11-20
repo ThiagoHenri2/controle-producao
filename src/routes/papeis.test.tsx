@@ -25,7 +25,7 @@ describe('Papéis: BottomNav e guards (spec 008)', () => {
     equipe.register(fakeSupabase);
   });
 
-  it('entregador: Lançar · Relatório · Categorias; /equipe volta para Lançar', async () => {
+  it('atendente: Lançar · Relatório · Categorias; /equipe volta para Lançar', async () => {
     fakeSupabase.setPersistedSession(makeProfile());
     renderApp('/equipe');
     expect(await findHeading('Lançar')).toBeInTheDocument();

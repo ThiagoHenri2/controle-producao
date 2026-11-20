@@ -33,7 +33,7 @@ const PERFIS: Perfil[] = [
   { id: 'u-maria', nome: 'Maria', username: 'maria', role: 'gerente', ativo: true },
   { id: 'u-joao', nome: 'João', username: 'joao', role: 'user', ativo: true },
   { id: 'u-ana', nome: 'Ana', username: 'ana', role: 'user', ativo: true },
-].map((p) => ({ ...p, created_at: '2026-01-01T00:00:00Z' }) as Perfil);
+].map((p) => ({ ...p, gerente_id: null, created_at: '2026-01-01T00:00:00Z' }) as Perfil);
 
 const equipe = createFakeEquipe();
 const resumo = createFakeResumo();
@@ -72,7 +72,7 @@ function abrir(path: string) {
 }
 
 async function itens() {
-  const lista = await screen.findByRole('list', { name: 'Por entregador' });
+  const lista = await screen.findByRole('list', { name: 'Por atendente' });
   return within(lista).getAllByTestId('equipe-item');
 }
 const valores = (linhas: HTMLElement[]) =>
@@ -197,7 +197,7 @@ describe('Equipe: Receitas | Despesas | Ambos', () => {
     ).toBeInTheDocument();
   });
 
-  it('tocar num entregador abre o relatório dele com o mesmo tipo e período', async () => {
+  it('tocar num atendente abre o relatório dele com o mesmo tipo e período', async () => {
     fakeSupabase.addProfiles(makeProfile({ id: 'u-joao', nome: 'João', username: 'joao' }));
     const { user } = abrir('/equipe?periodo=semana&tipo=ambos');
     await itens();

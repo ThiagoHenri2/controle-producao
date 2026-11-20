@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { useAuth } from '@/features/auth/auth-context';
+import { ContaPage } from '@/features/auth/ContaPage';
+import { ContaButton } from '@/features/auth/components/ContaButton';
 import { LogoutButton } from '@/features/auth/components/LogoutButton';
 import { LancamentosPage } from '@/features/lancamentos/LancamentosPage';
 import { RelatorioPage } from '@/features/relatorio/RelatorioPage';
@@ -20,12 +22,22 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route
           element={
-            <AppLayout isAdmin={isAdmin} isGestor={isGestor} headerActions={<LogoutButton />} />
+            <AppLayout
+              isAdmin={isAdmin}
+              isGestor={isGestor}
+              headerActions={
+                <>
+                  <ContaButton />
+                  <LogoutButton />
+                </>
+              }
+            />
           }
         >
           <Route index element={<LancamentosPage />} />
           <Route path={ROUTES.relatorio} element={<RelatorioPage />} />
           <Route path={ROUTES.categorias} element={<CategoriasPage />} />
+          <Route path={ROUTES.conta} element={<ContaPage />} />
           <Route element={<GestorRoute />}>
             <Route path={ROUTES.equipe} element={<EquipePage />} />
           </Route>

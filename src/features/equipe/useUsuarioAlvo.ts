@@ -5,23 +5,23 @@ import { CATS_PARAM, DCATS_PARAM, toSearchString } from '@/features/relatorio/fi
 import type { Perfil } from './api';
 import { usePerfis } from './hooks';
 
-/** Parâmetro da URL com o entregador escolhido pelo gestor (spec 008). */
+/** Parâmetro da URL com o atendente escolhido pelo gestor (spec 008). */
 export const USUARIO_PARAM = 'usuario';
 
 export type UsuarioAlvo = {
   /** Id do usuário logado. */
   euId: string;
-  /** Dono dos dados exibidos/lançados: o próprio ou o entregador escolhido pelo gestor. */
+  /** Dono dos dados exibidos/lançados: o próprio ou o atendente escolhido pelo gestor. */
   alvoId: string;
   isEu: boolean;
   isGestor: boolean;
   /** Perfil do alvo quando ≠ eu (`null` enquanto a lista carrega). */
   alvoPerfil: Perfil | null;
-  /** Nome para exibir: "Eu" ou o nome do entregador. */
+  /** Nome para exibir: "Eu" ou o nome do atendente. */
   alvoNome: string;
   /** `p_usuario` das RPCs: `null` quando é o próprio usuário. */
   pUsuario: string | null;
-  /** Perfis que o gestor pode escolher (vazio para entregador). */
+  /** Perfis que o gestor pode escolher (vazio para atendente). */
   perfis: ReturnType<typeof usePerfis>;
   /** Troca o alvo na URL (replace). Limpa `cats` e `dcats`, que são IDs de outro usuário. */
   setAlvo: (id: string) => void;
@@ -30,7 +30,7 @@ export type UsuarioAlvo = {
 };
 
 /**
- * Entregador alvo das telas Lançar, Categorias e Relatório, lido de `?usuario=`.
+ * Atendente alvo das telas Lançar, Categorias e Relatório, lido de `?usuario=`.
  * - Para quem não é gestor, sempre devolve o próprio id e ignora o parâmetro.
  * - Para o gestor, um id que não está na lista de perfis (já carregada) cai para "eu".
  */
@@ -69,7 +69,7 @@ export function useUsuarioAlvo(): UsuarioAlvo {
     isEu,
     isGestor,
     alvoPerfil,
-    alvoNome: isEu ? 'Eu' : (alvoPerfil?.nome ?? 'Entregador'),
+    alvoNome: isEu ? 'Eu' : (alvoPerfil?.nome ?? 'Atendente'),
     pUsuario: isEu ? null : alvoId,
     perfis,
     setAlvo,

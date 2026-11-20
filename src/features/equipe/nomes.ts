@@ -1,6 +1,6 @@
 /**
  * Filtro por NOME de categoria da tela Equipe (spec 008). As categorias são por
- * entregador; o gestor filtra "Pizza de todo mundo" pela união dos nomes,
+ * atendente; o gestor filtra "Pizza de todo mundo" pela união dos nomes,
  * sem diferenciar maiúsculas nem espaços nas pontas (igual a `lower(btrim())` da RPC).
  * Funções puras (sem React).
  */

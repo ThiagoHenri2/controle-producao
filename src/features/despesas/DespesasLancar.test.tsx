@@ -265,7 +265,7 @@ describe('Lançar › Despesas', () => {
     expect(await screen.findByText('Nenhuma despesa neste dia.')).toBeInTheDocument();
   });
 
-  it('gestor lança para outro entregador: user_id do alvo, criado_por pelo banco', async () => {
+  it('gestor lança para outro atendente: user_id do alvo, criado_por pelo banco', async () => {
     entrarComo(MARIA);
     const { user } = abrir('/?usuario=u-ana&aba=despesas');
     await user.click(await screen.findByRole('radio', { name: 'Pedágio' }));

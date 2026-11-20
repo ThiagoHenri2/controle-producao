@@ -17,7 +17,7 @@ type EntregasTabProps = {
 
 /**
  * Lançar › Entregas (spec 004): steppers por categoria ativa e o que já foi lançado no dia.
- * O gestor pode lançar para outro entregador (spec 008): categorias, preços e lista são do alvo.
+ * O gestor pode lançar para outro atendente (spec 008): categorias, preços e lista são do alvo.
  */
 export function EntregasTab({ alvo, data, hoje, onSavingChange }: EntregasTabProps) {
   const categorias = useCategorias(alvo.alvoId, { incluirInativas: false });

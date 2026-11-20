@@ -4,7 +4,7 @@
  */
 export const despesaKeys = {
   all: ['despesas'] as const,
-  /** Tudo de um dono (o próprio usuário ou o entregador alvo do gestor). */
+  /** Tudo de um dono (o próprio usuário ou o atendente alvo do gestor). */
   user: (userId: string) => [...despesaKeys.all, userId] as const,
   dia: (userId: string, data: string) => [...despesaKeys.user(userId), data] as const,
 };

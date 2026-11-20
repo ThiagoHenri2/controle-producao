@@ -5,7 +5,7 @@ export const ROLES: readonly ProfileRole[] = ['user', 'gerente', 'admin'];
 
 /** Rótulo curto do papel (selos e selects). */
 export const ROLE_LABELS: Record<ProfileRole, string> = {
-  user: 'Entregador',
+  user: 'Atendente',
   gerente: 'Gerente',
   admin: 'Admin',
 };

@@ -91,6 +91,23 @@
 - **Seletor "Lançando para":** a lista vem de `profiles`, que pela RLS já devolve só os atendentes do gerente (ou todos, para o admin). Sem mudança de lógica, só confirmar.
 - **Admin sem gerente definido:** nenhuma regra nova.
 
+### Acréscimos da implementação (frontend-ui, T010.4–T010.8)
+- **Redefinir senha com confirmação também no admin.** O `ResetPasswordSheet` é um só (Usuários e Equipe) e passou a pedir nova senha + confirmação ("As senhas não conferem.") nos dois lugares.
+- **Campo de senha compartilhado.** O antigo `AdminPasswordInput` virou `PasswordInput` em `src/components/ui` (com `autoComplete` configurável), usado em Usuários, Equipe e Minha conta.
+- **Minha conta:**
+  - a senha atual errada aparece abaixo do campo "Senha atual". Se a conferência falhar por rede ou servidor (5xx), aparece uma mensagem genérica de conexão em vez de "Senha atual incorreta.";
+  - `weak_password` vira "Senha fraca. Escolha outra, com pelo menos 6 caracteres." e `same_password` vira "A nova senha precisa ser diferente da atual.", as duas abaixo de "Nova senha";
+  - o atendente sem gerente vê "Sem gerente". Gerente e admin não veem a linha de gerente;
+  - a conferência via `signInWithPassword` renova a sessão do próprio usuário. O app continua logado na mesma tela.
+- **Admin › Usuários:**
+  - o gerente mostra "Sem atendentes" (0), "1 atendente" ou "N atendentes";
+  - em "Definir gerente…", tocar numa opção já salva. Tocar na opção atual (marcada) só fecha o sheet. Só aparecem gerentes **ativos**;
+  - em "Gerente responsável", só aparecem gerentes ativos. Sem nenhum gerente ativo, o select fica desabilitado com uma dica. O `gerente_id` só é enviado quando Papel = Atendente;
+  - um 400 do `create` sobre o gerente aparece abaixo do select, e os demais erros aparecem no aviso do formulário;
+  - os textos de confirmação de "Tornar gerente" e "Tornar atendente" foram ajustados ao escopo novo. Rebaixar um gerente avisa que os atendentes dele ficam sem gerente.
+- **Equipe:** o menu ⋮ só aparece nas linhas geríveis (admin: todos, menos ele; gerente: linhas `role = 'user'`) e tem um único item, "Redefinir senha". As demais linhas recebem um espaçador para manter os valores alinhados. O título da lista passou a "Por atendente".
+- **Renomeação:** "Entregador" virou "Atendente" também em comentários e nomes de testes (`grep -ri entregador src` vazio, fora as asserções que garantem a ausência). A BottomNav não tinha o termo.
+
 ## Critérios de aceite
 - [ ] O atendente troca a própria senha em Minha conta e entra com a nova; a senha atual errada é recusada.
 - [ ] O admin vincula `joao` à gerente `maria`; a Maria vê só ela + o João na Equipe e no seletor.

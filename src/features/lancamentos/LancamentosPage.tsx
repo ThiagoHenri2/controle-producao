@@ -13,7 +13,7 @@ const ID_ABAS = 'lancar-aba';
 
 /**
  * Tela Lançar com as abas Entregas | Despesas (`?aba=`, spec 009). A data
- * (spec 004) e o entregador alvo (`?usuario=`, spec 008) valem para as duas
+ * (spec 004) e o atendente alvo (`?usuario=`, spec 008) valem para as duas
  * abas e são mantidos ao trocar de aba.
  */
 export function LancamentosPage() {

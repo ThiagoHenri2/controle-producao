@@ -1,6 +1,6 @@
 export const RELATORIO_ERROR_MESSAGES = {
   carregar: 'Não foi possível carregar o relatório.',
-  acessoNegado: 'Acesso negado. Só gerente ou admin vê os dados de outros entregadores.',
+  acessoNegado: 'Acesso negado. Só gerente ou admin vê os dados de outros atendentes.',
   periodoInvalido: 'Período inválido. Escolha no máximo 366 dias, com o início antes do fim.',
 } as const;
 

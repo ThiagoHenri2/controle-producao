@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { Button, ConfirmDialog, EmptyState, SkeletonList, useToast } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
@@ -6,6 +6,7 @@ import { ROLE_LABELS } from '@/features/auth/roles';
 import type { ProfileRole } from '@/lib/database.types';
 import type { AdminUser } from './api';
 import { AdminSheet } from './components/AdminSheet';
+import { DefinirGerenteSheet } from './components/DefinirGerenteSheet';
 import { NewUserSheet } from './components/NewUserSheet';
 import { ResetPasswordSheet } from './components/ResetPasswordSheet';
 import { UserActionsList, type UserAction } from './components/UserActionsList';
@@ -38,8 +39,8 @@ function confirmCopy(confirm: Confirm) {
         title: `Tornar ${user.nome} gerente?`,
         description:
           user.role === 'admin'
-            ? 'Ele deixa de gerenciar usuários, mas continua vendo e lançando para todos os entregadores.'
-            : 'Ele poderá ver quanto pagar a cada entregador, lançar por eles e ajustar as categorias de todos.',
+            ? 'Ele deixa de gerenciar usuários e passa a ver só os atendentes vinculados a ele.'
+            : 'Ele poderá ver, lançar e redefinir a senha dos atendentes vinculados a ele. Vincule-os em "Definir gerente…".',
         confirmLabel: 'Tornar gerente',
         variant: 'primary' as const,
       };
@@ -53,10 +54,12 @@ function confirmCopy(confirm: Confirm) {
       };
     case 'user':
       return {
-        title: `Tornar ${user.nome} entregador?`,
+        title: `Tornar ${user.nome} atendente?`,
         description:
-          'Ele deixa de ver e de lançar os dados dos outros e passa a ver só os próprios.',
-        confirmLabel: 'Tornar entregador',
+          user.role === 'gerente'
+            ? 'Ele passa a ver só os próprios dados, e os atendentes dele ficam sem gerente.'
+            : 'Ele deixa de ver e de lançar os dados dos outros e passa a ver só os próprios.',
+        confirmLabel: 'Tornar atendente',
         variant: 'danger' as const,
       };
   }
@@ -73,6 +76,25 @@ export function UsuariosPage() {
   const [creating, setCreating] = useState(false);
   const [actionsFor, setActionsFor] = useState<AdminUser | null>(null);
   const [resetFor, setResetFor] = useState<AdminUser | null>(null);
+  const [gerenteFor, setGerenteFor] = useState<AdminUser | null>(null);
+
+  const users = usersQuery.data;
+  /** Gerentes ativos (destino de "Definir gerente…" e "Gerente responsável"). */
+  const gerentesAtivos = useMemo(
+    () => (users ?? []).filter((u) => u.role === 'gerente' && u.ativo),
+    [users],
+  );
+  const { nomePorId, atendentesPorGerente } = useMemo(() => {
+    const nomes = new Map<string, string>();
+    const contagem = new Map<string, number>();
+    for (const u of users ?? []) {
+      nomes.set(u.id, u.nome);
+      if (u.role === 'user' && u.gerente_id) {
+        contagem.set(u.gerente_id, (contagem.get(u.gerente_id) ?? 0) + 1);
+      }
+    }
+    return { nomePorId: nomes, atendentesPorGerente: contagem };
+  }, [users]);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
   const confirmPending = setActive.isPending || setRole.isPending;
@@ -82,6 +104,7 @@ export function UsuariosPage() {
     if (!user) return;
     setActionsFor(null);
     if (action.type === 'reset_password') setResetFor(user);
+    else if (action.type === 'set_gerente') setGerenteFor(user);
     else if (action.type === 'toggle_active') setConfirm({ kind: 'active', user });
     // Nunca sobre si mesmo (o item ⋮ nem aparece para o próprio admin).
     else if (user.id !== profile?.id) setConfirm({ kind: 'role', user, role: action.role });
@@ -144,7 +167,7 @@ export function UsuariosPage() {
         <EmptyState
           icon={Users}
           title="Nenhum usuário ainda"
-          description="Cadastre o primeiro entregador para ele poder entrar no app."
+          description="Cadastre o primeiro atendente para ele poder entrar no app."
         />
       ) : (
         <ul aria-label="Usuários" className="flex flex-col gap-2">
@@ -153,6 +176,8 @@ export function UsuariosPage() {
               key={user.id}
               user={user}
               isSelf={user.id === profile?.id}
+              gerenteNome={user.gerente_id ? (nomePorId.get(user.gerente_id) ?? null) : null}
+              atendentes={atendentesPorGerente.get(user.id) ?? 0}
               onOpenActions={setActionsFor}
             />
           ))}
@@ -176,7 +201,7 @@ export function UsuariosPage() {
         </div>
       </div>
 
-      {creating && <NewUserSheet onClose={() => setCreating(false)} />}
+      {creating && <NewUserSheet gerentes={gerentesAtivos} onClose={() => setCreating(false)} />}
 
       <AdminSheet
         open={actionsFor !== null}
@@ -188,6 +213,14 @@ export function UsuariosPage() {
       </AdminSheet>
 
       {resetFor && <ResetPasswordSheet user={resetFor} onClose={() => setResetFor(null)} />}
+
+      {gerenteFor && (
+        <DefinirGerenteSheet
+          user={gerenteFor}
+          gerentes={gerentesAtivos}
+          onClose={() => setGerenteFor(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={confirm !== null}

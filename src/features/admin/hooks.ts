@@ -6,6 +6,7 @@ import {
   listProfiles,
   resetPassword,
   setUserActive,
+  setUserGerente,
   setUserRole,
   type AdminUsersError,
   type AdminUsersResponse,
@@ -22,7 +23,7 @@ export function useAdminUsers() {
   return useQuery({ queryKey: adminKeys.users(), queryFn: listProfiles });
 }
 
-/** Lista de usuários (também usada pelo seletor de entregador) e a Equipe (papel/ativo). */
+/** Lista de usuários (também usada pelo seletor de atendente) e a Equipe (papel/ativo). */
 function useInvalidateUsers() {
   const queryClient = useQueryClient();
   return () =>
@@ -60,6 +61,18 @@ export function useSetUserRole() {
   const invalidate = useInvalidateUsers();
   return useMutation<AdminUsersResponse, AdminUsersError, { userId: string; role: ProfileRole }>({
     mutationFn: ({ userId, role }) => setUserRole(userId, role),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetUserGerente() {
+  const invalidate = useInvalidateUsers();
+  return useMutation<
+    AdminUsersResponse,
+    AdminUsersError,
+    { userId: string; gerenteId: string | null }
+  >({
+    mutationFn: ({ userId, gerenteId }) => setUserGerente(userId, gerenteId),
     onSuccess: invalidate,
   });
 }

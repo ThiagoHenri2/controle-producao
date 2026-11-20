@@ -50,7 +50,7 @@ function resumoFiltro(
 
 /**
  * Relatório (spec 005): total do período, por categoria e por dia, com filtro de categorias.
- * O gestor escolhe o entregador (`?usuario=`, `p_usuario`, spec 008).
+ * O gestor escolhe o atendente (`?usuario=`, `p_usuario`, spec 008).
  * Tipo Receitas | Despesas | Ambos (`?tipo=`, spec 009), com saldo em Ambos.
  */
 export function RelatorioPage() {

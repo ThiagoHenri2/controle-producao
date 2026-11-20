@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { CATEGORIA_ERROR_MESSAGES, toCategoriaError } from './errors';
 
 export type Categoria = Tables<'categorias'>;
-/** `user_id` = dono da categoria (o próprio usuário ou, para o gestor, o entregador alvo). */
+/** `user_id` = dono da categoria (o próprio usuário ou, para o gestor, o atendente alvo). */
 export type CategoriaInsert = {
   user_id: string;
   nome: string;

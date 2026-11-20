@@ -11,7 +11,7 @@ import { CategoriaDespesaChips } from './CategoriaDespesaChips';
 type NovaDespesaFormProps = {
   /** Só categorias de despesa ativas do dono. */
   categorias: ReadonlyArray<CategoriaDespesa>;
-  /** Dono da despesa (o próprio usuário ou o entregador alvo do gestor). */
+  /** Dono da despesa (o próprio usuário ou o atendente alvo do gestor). */
   userId: string;
   /** Data da despesa, `yyyy-MM-dd`. */
   data: string;
