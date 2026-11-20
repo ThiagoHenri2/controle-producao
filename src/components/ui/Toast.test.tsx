@@ -35,6 +35,17 @@ describe('Toast', () => {
     expect(screen.queryByText('Falhou')).not.toBeInTheDocument();
   });
 
+  it('fica no topo (abaixo do header), sem cobrir os botões fixos do rodapé', () => {
+    render(
+      <ToastProvider>
+        <Trigger />
+      </ToastProvider>,
+    );
+    const container = screen.getByTestId('toast-container');
+    expect(container.style.top).toContain('safe-area-inset-top');
+    expect(container.style.bottom).toBe('');
+  });
+
   it('useToast fora do provider dá erro claro', () => {
     // Silencia o log esperado do React/jsdom para o erro lançado no render.
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});

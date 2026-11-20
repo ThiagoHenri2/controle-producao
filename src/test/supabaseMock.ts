@@ -12,6 +12,9 @@ import type { Tables } from '@/lib/database.types';
 
 type Profile = Tables<'profiles'>;
 type Listener = (event: AuthChangeEvent, session: Session | null) => void;
+/** Resposta de uma RPC simulada, no formato do supabase-js. */
+export type RpcResult = { data: unknown; error: { code: string; message: string } | null };
+export type RpcHandler = (args: Record<string, unknown>) => RpcResult | Promise<RpcResult>;
 type Account = { password: string; profile: Profile | null };
 
 export function makeProfile(overrides: Partial<Profile> = {}): Profile {
@@ -98,10 +101,20 @@ function createFakeSupabase() {
     }),
   });
 
+  /** RPCs simuladas por feature (ver `setRpcHandler`). */
+  const rpcHandlers = new Map<string, RpcHandler>();
+
+  const rpc = vi.fn(async (fn: string, args?: Record<string, unknown>) => {
+    const handler = rpcHandlers.get(fn);
+    if (!handler) throw new Error(`RPC não simulada: ${fn}`);
+    return handler(args ?? {});
+  });
+
   return {
-    client: { auth, from },
+    client: { auth, from, rpc },
     auth,
     from,
+    rpc,
     /** Cadastra um usuário que pode logar com `${username}@entregas.local`. */
     addAccount(username: string, password: string, profile: Profile | null) {
       accounts.set(`${username}@entregas.local`, { password, profile });
@@ -125,6 +138,13 @@ function createFakeSupabase() {
     setTableHandler(table: string, handler: () => unknown) {
       tableHandlers.set(table, handler);
     },
+    /**
+     * Simula uma RPC: `rpc(fn, args)` passa a retornar `handler(args)`.
+     * O handler devolve `{ data, error }` como o supabase-js. O `reset()` remove os handlers.
+     */
+    setRpcHandler(fn: string, handler: RpcHandler) {
+      rpcHandlers.set(fn, handler);
+    },
     /** Segura o signIn até chamar a função retornada. */
     holdSignIn(): () => void {
       let release = () => {};
@@ -145,6 +165,7 @@ function createFakeSupabase() {
       pendingInitial.length = 0;
       signInGate = null;
       tableHandlers.clear();
+      rpcHandlers.clear();
       vi.clearAllMocks();
     },
   };

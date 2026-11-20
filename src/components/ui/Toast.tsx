@@ -58,10 +58,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
+      {/*
+        No topo, logo abaixo do PageHeader (h-14 + safe area), para não cobrir os
+        botões fixos acima da BottomNav (Salvar, Nova categoria).
+      */}
       <div
         aria-live="polite"
+        data-testid="toast-container"
         className="pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-4"
-        style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom) + 0.75rem)' }}
+        style={{ top: 'calc(3.5rem + env(safe-area-inset-top) + 0.5rem)' }}
       >
         {toasts.map((t) => {
           const Icon = icons[t.type];

@@ -25,6 +25,15 @@
 - Excluir exige confirmação.
 - Subtotal ao vivo: calculado em centavos inteiros (`quantidade * toCentavos(valor)`).
 
+### Data do lançamento (definida pelo usuário)
+- Abrir a tela traz **sempre hoje** selecionado. A data escolhida **não** é persistida entre sessões (nem em URL/localStorage). Se o PWA ficar aberto de um dia para o outro e o usuário não tiver escolhido outra data, ela acompanha o novo "hoje" ao voltar ao primeiro plano.
+- O **rótulo da data** no topo ("Hoje, 20/11/2026" / "Ontem, 19/11/2026" / "qui, 19/11/2026") é um botão grande que abre o **calendário nativo** (`<input type="date" max={hojeISO()}>`, via `showPicker()` com fallback de foco/clique). ◀ e ▶ navegam dia a dia; ▶ fica desabilitado em hoje. Datas passadas são livres.
+- Data futura é bloqueada no front: se o calendário devolver uma data > hoje, a seleção volta para hoje. No banco, a constraint `lancamentos_data_nao_futura` (23514) vira a mensagem "Não dá para lançar em data futura…".
+- Fora de hoje aparece uma **faixa âmbar** "Lançando para qui, 19/11/2026 — Voltar para hoje"; o botão volta a data para hoje.
+- O toast de sucesso inclui a data quando não é hoje: "Lançamentos salvos em 19/11 — R$ 225,00". O valor do toast é a soma de `valor_total` devolvido pelo insert (em centavos).
+- Depois de salvar, a **data selecionada é mantida** (permite lançar vários dias atrasados em sequência).
+- Erros do trigger de preço: 23503 → "Categoria não encontrada…", 23514 "Categoria inativa" → "Uma das categorias foi desativada…" (as categorias são recarregadas).
+
 ## Dados / API (`src/features/lancamentos/api.ts`)
 | Função | Supabase |
 |---|---|
@@ -58,12 +67,15 @@ Invalidar após a mutation: `['lancamentos', data]` e `['resumo']`.
 ```
 - O stepper aceita digitação direta (`inputMode="numeric"`); manter o + pressionado incrementa continuamente (opcional).
 - Sem categorias ativas: EmptyState "Cadastre suas categorias para começar" → link para `/categorias`.
+- A edição usa um campo `Quantidade` (`inputMode="numeric"`, validado com Zod: inteiro 1–9999) e `Observação` (≤ 200) num BottomSheet; o item da lista inteiro abre a edição (ícone ⋮), e o Excluir fica no rodapé do sheet com ConfirmDialog.
+- A barra "Subtotal · Salvar" fica numa linha só (economiza altura em 360×740) e sobe junto com o teclado (via `visualViewport`).
+- Os toasts aparecem no **topo** (abaixo do header) para não cobrir a barra de Salvar.
 
 ## Critérios de aceite
-- [ ] Lançar 50 Sanduíche (2,50) + 20 Pizza (5,00) mostra o subtotal R$ 225,00 e grava 2 registros com `valor_total` 125,00 e 100,00.
+- [x] Lançar 50 Sanduíche (2,50) + 20 Pizza (5,00) mostra o subtotal R$ 225,00 e grava 2 registros com `valor_total` 125,00 e 100,00.
 - [ ] Após reajustar Pizza para 6,00, os registros antigos continuam com 5,00, e um novo lançamento usa 6,00.
-- [ ] Não é possível escolher uma data futura.
-- [ ] Trocar a data recarrega a lista "Já lançado" daquela data.
-- [ ] Editar a quantidade 20 → 25 atualiza o total do dia; excluir pede confirmação.
-- [ ] Com a rede desligada, Salvar mostra um toast de erro e mantém os valores digitados.
+- [x] Não é possível escolher uma data futura.
+- [x] Trocar a data recarrega a lista "Já lançado" daquela data.
+- [x] Editar a quantidade 20 → 25 atualiza o total do dia; excluir pede confirmação.
+- [x] Com a rede desligada, Salvar mostra um toast de erro e mantém os valores digitados.
 - [ ] O fluxo inteiro cabe em 360×740 sem o teclado cobrir o botão Salvar.
