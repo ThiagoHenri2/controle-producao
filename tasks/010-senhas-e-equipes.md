@@ -9,4 +9,4 @@ Spec: [specs/010-senhas-e-equipes.md](../specs/010-senhas-e-equipes.md)
 - [x] **T010.6** — Equipe: "Redefinir senha" por atendente (gerente e admin). — agent: frontend-ui — depende de: T010.3 — aceite: critério 3.
 - [x] **T010.7** — Renomear "Entregador" → "Atendente" na UI. — agent: frontend-ui — depende de: — — aceite: grep sem "Entregador" na UI.
 - [x] **T010.8** — Testes de front T010.4–T010.7. — agent: qa-tester — depende de: T010.4–T010.7 — aceite: `npm test` verde.
-- [ ] **T010.9** — Deploy (0008 → Edge Function → push) e validação em produção. — agent: orquestrador — depende de: todas — aceite: critérios marcados.
+- [x] **T010.9** _(20/11/2026: 0008 aplicada, Edge Function atualizada, front publicado; rls_check "RLS OK" em produção.)_ — Deploy (0008 → Edge Function → push) e validação em produção. — agent: orquestrador — depende de: todas — aceite: critérios marcados.

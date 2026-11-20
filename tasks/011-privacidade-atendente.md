@@ -7,4 +7,4 @@ Modelo dos agents: **Sonnet 5.5** (pedido do usuário).
 - [x] **T011.3** — Categorias: switch "Visível para <gerente>" (lista, sheet, Mostrar/Ocultar todas), avisos; tipos (`visivel_gerente`). — agent: frontend-ui — depende de: T010 front — aceite: critério 2.
 - [x] **T011.4** — Gerente → atendente: esconder a aba Despesas, o tipo no Relatório e na Equipe; notas e EmptyStates. — agent: frontend-ui — depende de: T011.3 — aceite: critérios 5 e 6.
 - [x] **T011.5** — Testes de front T011.3–T011.4. — agent: qa-tester — depende de: T011.3–T011.4 — aceite: `npm test` verde.
-- [ ] **T011.6** — Deploy (0008 + 0009 → Edge Function → push) e validação. — agent: orquestrador — depende de: todas e da spec 010 — aceite: critérios marcados.
+- [x] **T011.6** _(20/11/2026: 0009 aplicada junto com a 0008; "RLS OK" em produção; front publicado. Critérios de UI dependem de teste manual.)_ — Deploy (0008 + 0009 → Edge Function → push) e validação. — agent: orquestrador — depende de: todas e da spec 010 — aceite: critérios marcados.
