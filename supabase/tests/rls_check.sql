@@ -2,9 +2,10 @@
 -- supabase/tests/rls_check.sql
 -- Verificação de RLS e do snapshot de preço (spec 002), data futura
 -- (0002, spec 004), RPCs de resumo (0003, spec 005) e nome de categoria
--- único sem diferenciar maiúsculas (0004).
+-- único sem diferenciar maiúsculas (0004) e filtro por categorias nas
+-- RPCs de resumo (0005).
 --
--- Requer as migrations 0001..0004 aplicadas.
+-- Requer as migrations 0001..0005 aplicadas.
 --
 -- Como rodar: cole o arquivo inteiro no SQL Editor do Supabase e execute.
 -- Tudo roda dentro de uma transação e termina em ROLLBACK: nada fica gravado.
@@ -356,6 +357,97 @@ begin
   -- trocar só a caixa do próprio nome é permitido
   update public.categorias set nome = 'PIZZA' where id = '00000000-0000-4000-c000-0000000000a4';
   update public.categorias set nome = 'Pizza' where id = '00000000-0000-4000-c000-0000000000a4';
+
+  -- -------------------------------------------------------------------
+  -- Filtro por categorias (0005). Em 2025-01-15: Lanche 50 × 2,50 = 125,00
+  -- e Pizza 20 × 5,00 = 100,00.
+  -- -------------------------------------------------------------------
+  -- só Pizza: uma linha, total_geral = 100,00
+  select count(*) into v_n
+    from public.resumo_por_categoria('2025-01-15', '2025-01-15',
+                                     array['00000000-0000-4000-c000-0000000000a4']::uuid[]);
+  assert v_n = 1, format('filtro [Pizza]: resumo_por_categoria deveria ter 1 linha (veio %s)', v_n);
+
+  select * into r
+    from public.resumo_por_categoria('2025-01-15', '2025-01-15',
+                                     array['00000000-0000-4000-c000-0000000000a4']::uuid[]);
+  assert r.categoria_id = '00000000-0000-4000-c000-0000000000a4' and r.nome = 'Pizza'
+     and r.quantidade = 20 and r.valor = 100.00 and r.total_geral = 100.00,
+    format('filtro [Pizza]: deveria ser Pizza 20 / 100,00 / total 100,00 (veio %s)', r);
+
+  -- por dia com só Pizza: 2025-01-15 conta só os 100,00
+  select count(*) into v_n
+    from public.resumo_por_dia('2025-01-15', '2025-01-15',
+                               array['00000000-0000-4000-c000-0000000000a4']::uuid[]);
+  assert v_n = 1, format('filtro [Pizza]: resumo_por_dia deveria ter 1 linha (veio %s)', v_n);
+
+  select * into r
+    from public.resumo_por_dia('2025-01-15', '2025-01-15',
+                               array['00000000-0000-4000-c000-0000000000a4']::uuid[]);
+  assert r.data = '2025-01-15' and r.quantidade = 20 and r.valor = 100.00,
+    format('filtro [Pizza]: resumo_por_dia deveria ser 2025-01-15 / 20 / 100,00 (veio %s)', r);
+
+  -- só Lanche no mês: o dia 2025-01-16 (só Pizza) some do resumo por dia
+  select count(*) into v_n
+    from public.resumo_por_dia('2025-01-01', '2025-01-31',
+                               array['00000000-0000-4000-c000-0000000000a3']::uuid[]);
+  assert v_n = 1, format('filtro [Lanche]: resumo_por_dia no mês deveria ter 1 dia (veio %s)', v_n);
+
+  -- as duas marcadas = sem filtro
+  assert (select total_geral from public.resumo_por_categoria('2025-01-15', '2025-01-15',
+            array['00000000-0000-4000-c000-0000000000a3',
+                  '00000000-0000-4000-c000-0000000000a4']::uuid[]) limit 1) = 225.00,
+    'filtro [Lanche, Pizza]: total_geral deveria ser 225,00';
+
+  -- null = todas
+  assert (select count(*) from public.resumo_por_categoria('2025-01-15', '2025-01-15', null)) = 2,
+    'filtro null: resumo_por_categoria deveria ter 2 linhas';
+  assert (select total_geral from public.resumo_por_categoria('2025-01-15', '2025-01-15', null) limit 1) = 225.00,
+    'filtro null: total_geral deveria ser 225,00';
+  assert (select valor from public.resumo_por_dia('2025-01-15', '2025-01-15', null)) = 225.00,
+    'filtro null: resumo_por_dia deveria ser 225,00';
+
+  -- array vazio = nenhuma linha
+  assert not exists (select 1 from public.resumo_por_categoria('2025-01-15', '2025-01-15', '{}'::uuid[])),
+    'filtro {}: resumo_por_categoria deveria retornar vazio';
+  assert not exists (select 1 from public.resumo_por_dia('2025-01-15', '2025-01-15', '{}'::uuid[])),
+    'filtro {}: resumo_por_dia deveria retornar vazio';
+
+  -- id inexistente = nenhuma linha
+  assert not exists (select 1 from public.resumo_por_categoria('2025-01-15', '2025-01-15',
+                       array['00000000-0000-4000-c000-00000000ffff']::uuid[])),
+    'filtro [id inexistente]: resumo_por_categoria deveria retornar vazio';
+
+  -- chamada só com (p_de, p_ate), posicional e nomeada (como o PostgREST faz):
+  -- sem ambiguidade e equivalente a null
+  assert (select total_geral from public.resumo_por_categoria('2025-01-15', '2025-01-15') limit 1) = 225.00,
+    'chamada (p_de, p_ate): total_geral deveria ser 225,00';
+  assert (select total_geral from public.resumo_por_categoria(p_de => '2025-01-15', p_ate => '2025-01-15') limit 1) = 225.00,
+    'chamada nomeada (p_de, p_ate): total_geral deveria ser 225,00';
+  assert (select valor from public.resumo_por_dia(p_de => '2025-01-15', p_ate => '2025-01-15')) = 225.00,
+    'chamada nomeada (p_de, p_ate): resumo_por_dia deveria ser 225,00';
+  assert (select total_geral from public.resumo_por_categoria(
+            p_de => '2025-01-15', p_ate => '2025-01-15',
+            p_categorias => array['00000000-0000-4000-c000-0000000000a4']::uuid[]) limit 1) = 100.00,
+    'chamada nomeada com p_categorias: total_geral deveria ser 100,00';
+
+  -- só existe uma assinatura de cada RPC (as antigas (date, date) foram removidas)
+  assert (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'resumo_por_categoria') = 1,
+    'resumo_por_categoria deveria ter uma única assinatura';
+  assert (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'resumo_por_dia') = 1,
+    'resumo_por_dia deveria ter uma única assinatura';
+
+  -- período inválido continua validado com filtro
+  v_estado := null;
+  begin
+    perform * from public.resumo_por_dia('2025-01-31', '2025-01-01',
+                                         array['00000000-0000-4000-c000-0000000000a4']::uuid[]);
+  exception when others then
+    v_estado := sqlstate;
+  end;
+  assert v_estado = '22023', format('resumo_por_dia com filtro: início > fim deveria falhar com 22023 (veio %s)', v_estado);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -388,6 +480,33 @@ begin
   select * into r from public.resumo_por_dia('2026-11-20', '2026-11-20');
   assert r.quantidade = 1 and r.valor = 3.00,
     format('VAZAMENTO: resumo_por_dia de B em 2026-11-20 deveria ser 1 / 3,00 (veio %s)', r);
+
+  -- B passando os ids das categorias de A: nada de A é somado
+  assert not exists (select 1 from public.resumo_por_categoria('2025-01-01', '2025-01-31',
+                       array['00000000-0000-4000-c000-0000000000a3',
+                             '00000000-0000-4000-c000-0000000000a4']::uuid[])),
+    'VAZAMENTO: resumo_por_categoria de B filtrando ids de A retorna dados de A';
+  assert not exists (select 1 from public.resumo_por_dia('2025-01-01', '2025-01-31',
+                       array['00000000-0000-4000-c000-0000000000a3',
+                             '00000000-0000-4000-c000-0000000000a4']::uuid[])),
+    'VAZAMENTO: resumo_por_dia de B filtrando ids de A retorna dados de A';
+  assert not exists (select 1 from public.resumo_por_categoria('2026-11-20', '2026-11-20',
+                       array['00000000-0000-4000-c000-0000000000a1']::uuid[])),
+    'VAZAMENTO: resumo_por_categoria de B filtrando a categoria de A em 2026-11-20';
+  assert not exists (select 1 from public.resumo_por_dia('2026-11-20', '2026-11-20',
+                       array['00000000-0000-4000-c000-0000000000a1']::uuid[])),
+    'VAZAMENTO: resumo_por_dia de B filtrando a categoria de A em 2026-11-20';
+
+  -- ids misturados (A + B): só o próprio total de B (1 × 3,00)
+  select * into r from public.resumo_por_categoria('2026-11-20', '2026-11-20',
+                       array['00000000-0000-4000-c000-0000000000a1',
+                             '00000000-0000-4000-c000-0000000000b1']::uuid[]);
+  assert r.categoria_id = '00000000-0000-4000-c000-0000000000b1' and r.total_geral = 3.00,
+    format('VAZAMENTO: filtro [A, B] de B deveria somar só 3,00 (veio %s)', r);
+  assert (select valor from public.resumo_por_dia('2026-11-20', '2026-11-20',
+            array['00000000-0000-4000-c000-0000000000a1',
+                  '00000000-0000-4000-c000-0000000000b1']::uuid[])) = 3.00,
+    'VAZAMENTO: resumo_por_dia de B com filtro [A, B] deveria ser 3,00';
 
   -- "Pizza" já existe para A, mas "pizza" é permitida para B
   insert into public.categorias (id, nome, valor_unitario)
@@ -508,6 +627,15 @@ begin
     v_falhou := true;
   end;
   assert v_falhou, 'VAZAMENTO: anon executa resumo_por_dia';
+
+  v_falhou := false;
+  begin
+    perform * from public.resumo_por_categoria('2025-01-01', '2025-01-31',
+                                               array['00000000-0000-4000-c000-0000000000a4']::uuid[]);
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon executa resumo_por_categoria com filtro';
 end $$;
 
 reset role;
