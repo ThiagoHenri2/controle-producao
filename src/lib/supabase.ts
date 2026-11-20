@@ -1,4 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
+
+export type TypedSupabaseClient = SupabaseClient<Database>;
 
 export type SupabaseEnvName = 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY';
 
@@ -47,14 +50,16 @@ export const isSupabaseConfigured = supabaseConfig.ok;
  * `isSupabaseConfigured` e mostra a tela "Configuração ausente". Qualquer uso
  * acidental do cliente nesse estado lança um `SupabaseConfigError` claro.
  */
-export const supabase: SupabaseClient = supabaseConfig.ok
-  ? createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+export const supabase: TypedSupabaseClient = supabaseConfig.ok
+  ? createClient<Database>(supabaseConfig.url, supabaseConfig.anonKey, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
     })
   : createUnconfiguredClient(supabaseConfig);
 
-function createUnconfiguredClient(config: Extract<SupabaseConfig, { ok: false }>): SupabaseClient {
-  return new Proxy({} as SupabaseClient, {
+function createUnconfiguredClient(
+  config: Extract<SupabaseConfig, { ok: false }>,
+): TypedSupabaseClient {
+  return new Proxy({} as TypedSupabaseClient, {
     get() {
       throw new SupabaseConfigError(config);
     },

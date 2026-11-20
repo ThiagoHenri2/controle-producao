@@ -95,7 +95,7 @@ O admin **não** enxerga categorias nem lançamentos de outros usuários.
 - [ ] As migrations aplicam do zero sem erro.
 - [ ] `supabase/tests/rls_check.sql` prova que o usuário A não vê nem altera categorias e lançamentos de B.
 - [ ] Inserir um lançamento sem `valor_unitario` copia o preço da categoria; inserir com a categoria de outro usuário falha.
-- [ ] Login com usuário e senha corretos leva a `/`; credencial errada mostra a mensagem genérica.
-- [ ] Usuário com `ativo=false` não consegue entrar.
-- [ ] Recarregar a página mantém a sessão; "Sair" volta para `/login`.
-- [ ] Acessar `/#/admin/usuarios` sendo user comum redireciona para `/`.
+- [x] Login com usuário e senha corretos leva a `/`; credencial errada mostra a mensagem genérica.
+- [x] Usuário com `ativo=false` não consegue entrar.
+- [x] Recarregar a página mantém a sessão; "Sair" volta para `/login`.
+- [x] Acessar `/#/admin/usuarios` sendo user comum redireciona para `/`.
