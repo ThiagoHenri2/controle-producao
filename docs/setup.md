@@ -75,6 +75,40 @@ _Em breve — será escrito na spec 007 (PWA e Deploy): repositório, secrets `V
 
 ---
 
-## 3. Edge Function de administração de usuários
+## 3. Edge Function admin-users
 
-_Em breve — será escrito na spec 006 (Admin usuários): deploy da função `admin-users` e configuração da `service_role`._
+A tela **Usuários** do app (só para admin) cria usuários, redefine senhas, ativa/desativa e muda o papel. Essas ações exigem a chave secreta `service_role`, que **nunca** vai para o app. Por isso elas rodam numa Edge Function do Supabase chamada **`admin-users`**.
+
+- Código: `supabase/functions/admin-users/index.ts` (um único arquivo, sem dependências locais).
+- Variáveis `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` são preenchidas **automaticamente** pelo Supabase. Não é preciso criar secrets.
+- O nome precisa ser exatamente **`admin-users`** (o app chama a função por esse nome).
+- **"Verify JWT" deve ficar LIGADO** (é o padrão). Assim o Supabase recusa chamadas sem login antes mesmo de rodar o código. A função ainda confere, por conta própria, se quem chama é admin ativo (senão responde 403).
+
+Pré-requisito: seções 1.3 (tabelas) e 1.5 (primeiro admin) concluídas.
+
+### 3.1 Opção A — pelo painel (sem instalar nada)
+1. No menu lateral do Supabase, abra **Edge Functions**.
+2. Clique em **Deploy a new function** → **Via Editor**.
+3. No campo de nome, digite **`admin-users`**.
+4. Apague o código de exemplo do editor.
+5. Abra `supabase/functions/admin-users/index.ts` deste repositório, copie **todo** o conteúdo e cole no editor.
+6. Clique em **Deploy function** e aguarde a confirmação.
+7. Abra a função na lista → **Details** (ou **Settings**) e confira que **"Verify JWT with legacy secret"** / **"Enforce JWT verification"** está **ligado**.
+
+Para atualizar depois: abra a função → aba **Code**, cole a versão nova e clique em **Deploy** de novo.
+
+### 3.2 Opção B — pela linha de comando
+Requer Node.js instalado. Na raiz do projeto:
+
+```bash
+npx supabase login
+npx supabase functions deploy admin-users --project-ref vkkgnxydswffvwzhutnz
+```
+
+O `login` abre o navegador uma única vez. O deploy mantém "Verify JWT" ligado (não use `--no-verify-jwt`).
+
+### 3.3 Conferir
+1. Entre no app como **admin** → **Usuários** → **Novo usuário**; crie `joao` com senha `123456`.
+2. Saia e entre como `joao` / `123456`: o login deve funcionar.
+3. Logs de erro: **Edge Functions** → `admin-users` → **Logs**.
+4. Testes por linha de comando (401/403/409): veja `docs/qa/admin-curl.md`.

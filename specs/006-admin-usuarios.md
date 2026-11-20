@@ -42,6 +42,9 @@ A listagem de usuários **não** precisa da função: o select em `profiles` já
 ## Front (`src/features/admin/`)
 - `api.ts`: `supabase.functions.invoke('admin-users', { body })` + `listProfiles()`.
 - `UsuariosPage` (rota `/admin/usuarios`, protegida por `AdminRoute`); a BottomNav mostra o item "Usuários" só para admin.
+- `schemas.ts`: Zod com as mesmas regras do backend (username `trim`+minúsculas, `^[a-z0-9._-]{3,30}$`; senha ≥ 6).
+- Erros da função: `toAdminUsersError` lê `{ error }` de `FunctionsHttpError.context.json()`; o 409 aparece abaixo do campo Usuário e os demais num alerta do formulário (ou toast, nas ações do menu).
+- O menu ⋮ abre um "bottom sheet" de ações (mais fácil de tocar com uma mão do que um dropdown). Desativar/Reativar e Tornar admin/Tornar usuário comum pedem confirmação. A linha do próprio admin não tem menu (o backend também bloqueia ações sobre si mesmo).
 
 ## Wireframe
 ```
@@ -60,8 +63,8 @@ Sheet "Novo usuário": Nome / Usuário / Senha (👁) / [Criar]
 
 ## Critérios de aceite
 - [ ] O admin cria `joao` / senha `123456`; `joao` faz login no app.
-- [ ] Criar um username repetido mostra "Usuário já existe".
+- [x] Criar um username repetido mostra "Usuário já existe". (front: `UsuariosPage.test.tsx`; ponta a ponta depende da Edge Function)
 - [ ] Um usuário comum que chama a função diretamente (curl com o próprio JWT) recebe **403**.
 - [ ] Desativar `joao` impede o login dele; reativar devolve o acesso, com os dados intactos.
-- [ ] O admin não consegue se desativar.
-- [ ] A tela de admin não exibe nenhum valor de lançamento de outros usuários.
+- [x] O admin não consegue se desativar. (front: ações escondidas na própria linha; o backend também bloqueia)
+- [x] A tela de admin não exibe nenhum valor de lançamento de outros usuários.

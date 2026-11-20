@@ -32,13 +32,13 @@ describe('ProtectedRoute / AdminRoute / Sair', () => {
     fakeSupabase.setPersistedSession(makeProfile());
     renderApp('/admin/usuarios');
     expect(await findHeading('Lançar')).toBeInTheDocument();
-    expect(screen.queryByText('Usuários em breve')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Novo usuário' })).not.toBeInTheDocument();
   });
 
   it('admin acessa /admin/usuarios e vê o item na BottomNav', async () => {
     fakeSupabase.setPersistedSession(makeProfile({ role: 'admin' }));
     renderApp('/admin/usuarios');
-    expect(await screen.findByText('Usuários em breve')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Novo usuário' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Usuários' })).toBeInTheDocument();
   });
 
