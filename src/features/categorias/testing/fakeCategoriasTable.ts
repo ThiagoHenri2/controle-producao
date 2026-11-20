@@ -1,7 +1,7 @@
 /**
  * Tabela `categorias` em memória para testes (registrada no `fakeSupabase` via
  * `setTableHandler('categorias', ...)`). Simula as regras do banco que o front trata:
- * - `unique(user_id, nome)` diferenciando maiúsculas → erro 23505;
+ * - `unique(user_id, nome)` diferenciando maiúsculas → erro 23505 (por dono);
  * - FK `restrict` de lançamentos → erro 23503 ao excluir categoria "em uso".
  */
 import type { Tables } from '@/lib/database.types';
@@ -45,11 +45,18 @@ export function createFakeCategoriasTable() {
     return fn();
   }
 
-  const conflita = (nome: string, ignorarId?: string) =>
-    rows.some((r) => r.id !== ignorarId && r.nome === nome);
+  /** Payloads recebidos em cada `insert` (para conferir o `user_id` enviado). */
+  const inserts: Array<Record<string, unknown>> = [];
+  /** Filtros `eq` de cada `select` (para conferir o filtro por `user_id`). */
+  const selects: Array<Record<string, unknown>> = [];
+
+  const conflita = (userId: string, nome: string, ignorarId?: string) =>
+    rows.some((r) => r.id !== ignorarId && r.user_id === userId && r.nome === nome);
 
   function selectQuery() {
     const filters: Array<(r: Categoria) => boolean> = [];
+    const eqs: Record<string, unknown> = {};
+    selects.push(eqs);
     const orders: Order[] = [];
     const exec = () =>
       run<Categoria[]>(() => {
@@ -71,6 +78,7 @@ export function createFakeCategoriasTable() {
       });
     const query = {
       eq(column: keyof Categoria, value: unknown) {
+        eqs[column] = value;
         filters.push((r) => r[column] === value);
         return query;
       },
@@ -90,22 +98,29 @@ export function createFakeCategoriasTable() {
 
   const handler = () => ({
     select: () => selectQuery(),
-    insert: (input: Partial<Categoria> & { nome: string; valor_unitario: number }) => ({
-      select: () => ({
-        single: () =>
-          run<Categoria | null>(() => {
-            if (conflita(input.nome)) {
-              return {
-                data: null,
-                error: pgError('23505', 'duplicate key value violates unique constraint'),
-              };
-            }
-            const row = makeCategoria({ ...input, id: `cat-${seq++}`, ativa: input.ativa ?? true });
-            rows.push(row);
-            return { data: { ...row }, error: null };
-          }),
-      }),
-    }),
+    insert: (input: Partial<Categoria> & { nome: string; valor_unitario: number }) => {
+      inserts.push({ ...input });
+      return {
+        select: () => ({
+          single: () =>
+            run<Categoria | null>(() => {
+              if (conflita(input.user_id ?? 'user-1', input.nome)) {
+                return {
+                  data: null,
+                  error: pgError('23505', 'duplicate key value violates unique constraint'),
+                };
+              }
+              const row = makeCategoria({
+                ...input,
+                id: `cat-${seq++}`,
+                ativa: input.ativa ?? true,
+              });
+              rows.push(row);
+              return { data: { ...row }, error: null };
+            }),
+        }),
+      };
+    },
     update: (patch: Partial<Categoria>) => ({
       eq: (_column: 'id', id: string) => ({
         select: () => ({
@@ -113,7 +128,7 @@ export function createFakeCategoriasTable() {
             run<Categoria | null>(() => {
               const row = rows.find((r) => r.id === id);
               if (!row) return { data: null, error: pgError('PGRST116', 'no rows') };
-              if (patch.nome !== undefined && conflita(patch.nome, id)) {
+              if (patch.nome !== undefined && conflita(row.user_id, patch.nome, id)) {
                 return {
                   data: null,
                   error: pgError('23505', 'duplicate key value violates unique constraint'),
@@ -139,6 +154,8 @@ export function createFakeCategoriasTable() {
 
   return {
     handler,
+    inserts,
+    selects,
     get rows(): readonly Categoria[] {
       return rows;
     },
@@ -167,6 +184,8 @@ export function createFakeCategoriasTable() {
     reset() {
       rows = [];
       emUso.clear();
+      inserts.length = 0;
+      selects.length = 0;
       gate = null;
       failNext = null;
       seq = 1;

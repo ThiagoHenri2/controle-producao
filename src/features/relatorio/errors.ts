@@ -1,9 +1,10 @@
 export const RELATORIO_ERROR_MESSAGES = {
   carregar: 'Não foi possível carregar o relatório.',
+  acessoNegado: 'Acesso negado. Só gerente ou admin vê os dados de outros entregadores.',
   periodoInvalido: 'Período inválido. Escolha no máximo 366 dias, com o início antes do fim.',
 } as const;
 
-export type RelatorioErrorKind = 'periodo_invalido' | 'desconhecido';
+export type RelatorioErrorKind = 'periodo_invalido' | 'acesso_negado' | 'desconhecido';
 
 /** Erro do relatório com mensagem pronta para o usuário. */
 export class RelatorioError extends Error {
@@ -30,6 +31,7 @@ function field(err: unknown, name: 'code' | 'message'): string | undefined {
  * Traduz erros das RPCs de resumo:
  * - 22023 (invalid_parameter_value) → período inválido. A RPC já manda a
  *   mensagem em pt-BR; usamos a nossa se vier vazia.
+ * - 42501 (insufficient_privilege, spec 008) → acesso negado;
  * - qualquer outro → mensagem genérica de carregamento.
  */
 export function toRelatorioError(err: unknown): RelatorioError {
@@ -38,6 +40,9 @@ export function toRelatorioError(err: unknown): RelatorioError {
   if (code === '22023') {
     const message = field(err, 'message')?.trim() || RELATORIO_ERROR_MESSAGES.periodoInvalido;
     return new RelatorioError('periodo_invalido', message, code);
+  }
+  if (code === '42501') {
+    return new RelatorioError('acesso_negado', RELATORIO_ERROR_MESSAGES.acessoNegado, code);
   }
   return new RelatorioError('desconhecido', RELATORIO_ERROR_MESSAGES.carregar, code);
 }

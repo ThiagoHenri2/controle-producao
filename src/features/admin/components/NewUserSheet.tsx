@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { Button, Input, useToast } from '@/components/ui';
+import { Button, Input, Select, useToast } from '@/components/ui';
+import { ROLES, ROLE_LABELS } from '@/features/auth/roles';
+import type { ProfileRole } from '@/lib/database.types';
 import { useCreateUser } from '../hooks';
 import { fieldErrorsFrom, newUserSchema, normalizeUsername, type NewUserInput } from '../schemas';
 import { AdminFormAlert } from './AdminFormAlert';
@@ -10,13 +12,16 @@ type FieldErrors = Partial<Record<keyof NewUserInput, string>>;
 
 type NewUserSheetProps = { onClose: () => void };
 
-/** Sheet "Novo usuário": nome, usuário (login) e senha inicial. */
+const ROLE_OPTIONS = ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
+
+/** Sheet "Novo usuário": nome, usuário (login), senha inicial e papel. */
 export function NewUserSheet({ onClose }: NewUserSheetProps) {
   const toast = useToast();
   const createUser = useCreateUser();
   const [nome, setNome] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<ProfileRole>('user');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -25,7 +30,7 @@ export function NewUserSheet({ onClose }: NewUserSheetProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
-    const parsed = newUserSchema.safeParse({ nome, username, password });
+    const parsed = newUserSchema.safeParse({ nome, username, password, role });
     if (!parsed.success) {
       setErrors(fieldErrorsFrom<keyof NewUserInput>(parsed.error));
       return;
@@ -87,6 +92,23 @@ export function NewUserSheet({ onClose }: NewUserSheetProps) {
           enterKeyHint="done"
           hint="Mínimo de 6 caracteres."
           error={errors.password}
+          disabled={pending}
+        />
+
+        <Select
+          label="Papel"
+          name="role"
+          value={role}
+          onChange={(e) => setRole(e.target.value as ProfileRole)}
+          options={ROLE_OPTIONS}
+          hint={
+            role === 'user'
+              ? 'Entregador: vê só os próprios dados.'
+              : role === 'gerente'
+                ? 'Gerente: vê quanto pagar a cada entregador e lança por eles.'
+                : 'Admin: tudo do gerente e também gerencia usuários.'
+          }
+          error={errors.role}
           disabled={pending}
         />
 

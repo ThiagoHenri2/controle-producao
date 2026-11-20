@@ -1,19 +1,32 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Skeleton } from '@/components/ui';
 import { formatBRL, fromCentavos } from '@/lib/format';
-import type { LancamentoComCategoria } from '../api';
+import { idsDeOutrosAutores, type LancamentoComCategoria } from '../api';
 import { tituloJaLancado } from '../dates';
 import { LANCAMENTO_ERROR_MESSAGES } from '../errors';
-import { useLancamentosDoDia } from '../hooks';
+import { useAutores, useLancamentosDoDia } from '../hooks';
 import { totalCentavos } from '../schema';
 import { EditarLancamentoSheet } from './EditarLancamentoSheet';
 import { LancamentoItem } from './LancamentoItem';
 
-type LancamentosDoDiaProps = { data: string };
+type LancamentosDoDiaProps = {
+  /** Dono da lista (o próprio usuário ou o entregador alvo do gestor). */
+  userId: string;
+  data: string;
+};
 
 /** Lista "Já lançado …" da data selecionada, com total do dia (soma de `valor_total`). */
-export function LancamentosDoDia({ data }: LancamentosDoDiaProps) {
-  const { data: rows, isPending, isError, refetch, isRefetching } = useLancamentosDoDia(data);
+export function LancamentosDoDia({ userId, data }: LancamentosDoDiaProps) {
+  const {
+    data: rows,
+    isPending,
+    isError,
+    refetch,
+    isRefetching,
+  } = useLancamentosDoDia(userId, data);
+  // Um único pedido de nomes por lista (selo "por <nome>").
+  const idsAutores = useMemo(() => idsDeOutrosAutores(rows ?? []), [rows]);
+  const autores = useAutores(idsAutores);
   const [editando, setEditando] = useState<LancamentoComCategoria | null>(null);
   const titulo = tituloJaLancado(data);
   const headingId = 'ja-lancado-titulo';
@@ -49,7 +62,14 @@ export function LancamentosDoDia({ data }: LancamentosDoDiaProps) {
         <>
           <ul aria-label={titulo} className="flex flex-col gap-2">
             {rows.map((l) => (
-              <LancamentoItem key={l.id} lancamento={l} onEdit={setEditando} />
+              <LancamentoItem
+                key={l.id}
+                lancamento={l}
+                autor={
+                  l.criado_por && l.criado_por !== l.user_id ? autores.get(l.criado_por) : undefined
+                }
+                onEdit={setEditando}
+              />
             ))}
           </ul>
           <p className="flex items-center justify-between px-3 py-1 text-base font-bold text-slate-900">

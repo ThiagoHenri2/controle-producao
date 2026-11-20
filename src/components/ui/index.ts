@@ -12,3 +12,4 @@ export { useToast, type ToastApi, type ToastInput, type ToastType } from './toas
 export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { Switch, type SwitchProps } from './Switch';
+export { Select, type SelectProps, type SelectOption } from './Select';

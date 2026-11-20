@@ -94,12 +94,13 @@ describe('LancamentosPage', () => {
     expect(await screen.findByText('Lançamentos salvos — R$ 225,00')).toBeInTheDocument();
     expect(lancamentos.inserts).toHaveLength(1);
     expect(lancamentos.inserts[0]).toEqual([
-      { data: '2026-11-20', categoria_id: 'cat-p', quantidade: 20 },
-      { data: '2026-11-20', categoria_id: 'cat-s', quantidade: 50 },
+      { user_id: 'user-1', data: '2026-11-20', categoria_id: 'cat-p', quantidade: 20 },
+      { user_id: 'user-1', data: '2026-11-20', categoria_id: 'cat-s', quantidade: 50 },
     ]);
     for (const item of lancamentos.inserts[0]) {
       expect(item).not.toHaveProperty('valor_unitario');
       expect(item).not.toHaveProperty('valor_total');
+      expect(item).not.toHaveProperty('criado_por');
     }
     expect(lancamentos.rows.map((r) => r.valor_total)).toEqual([100, 125]);
 
@@ -109,7 +110,7 @@ describe('LancamentosPage', () => {
     expect(await screen.findByTestId('total-dia')).toHaveTextContent('R$ 225,00');
     expect(screen.getByRole('heading', { name: 'Já lançado hoje' })).toBeInTheDocument();
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lancamentos', '2026-11-20'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lancamentos', 'user-1', '2026-11-20'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['resumo'] });
   });
 

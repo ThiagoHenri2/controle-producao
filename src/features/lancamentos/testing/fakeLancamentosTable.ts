@@ -4,7 +4,10 @@
  * - trigger `lancamentos_preco_snapshot`: copia o preço da categoria; categoria
  *   inexistente → 23503, inativa → 23514;
  * - `check (data <= current_date + 1)` (`lancamentos_data_nao_futura`) → 23514;
- * - insert em lote atômico (tudo ou nada); `valor_total` calculado pelo banco.
+ * - insert em lote atômico (tudo ou nada); `valor_total` calculado pelo banco;
+ * - `criado_por` forçado para o usuário logado (trigger anti-forja da 0006);
+ *   `user_id` omitido vira o usuário logado (default `auth.uid()`).
+ * O "usuário logado" vem de `authUid()` (padrão 'user-1').
  */
 import type { Tables } from '@/lib/database.types';
 import { hojeISO, toISODate } from '@/lib/format';
@@ -37,9 +40,11 @@ function amanhaISO(): string {
 export function makeLancamento(overrides: Partial<Lancamento> = {}): Lancamento {
   const quantidade = overrides.quantidade ?? 1;
   const valor_unitario = overrides.valor_unitario ?? 2.5;
+  const user_id = overrides.user_id ?? 'user-1';
   return {
     id: `lan-${Math.random().toString(36).slice(2, 10)}`,
-    user_id: 'user-1',
+    user_id,
+    criado_por: user_id,
     categoria_id: 'cat-1',
     data: hojeISO(),
     observacao: null,
@@ -62,13 +67,18 @@ function thenable<T>(exec: () => Promise<Result<T>>) {
   };
 }
 
-export function createFakeLancamentosTable(categorias: () => ReadonlyArray<Categoria>) {
+export function createFakeLancamentosTable(
+  categorias: () => ReadonlyArray<Categoria>,
+  authUid: () => string = () => 'user-1',
+) {
   let rows: Lancamento[] = [];
   let gate: Promise<void> | null = null;
   let failNext: PgError | null = null;
   let seq = 1;
   /** Payloads recebidos em cada `insert` (para conferir o que o front envia). */
   const inserts: InsertInput[][] = [];
+  /** Filtros `eq` de cada `select` (para conferir o filtro por `user_id`). */
+  const selects: Array<Record<string, unknown>> = [];
 
   async function run<T>(fn: () => Result<T>): Promise<Result<T>> {
     if (gate) await gate;
@@ -88,8 +98,11 @@ export function createFakeLancamentosTable(categorias: () => ReadonlyArray<Categ
   const handler = () => ({
     select: () => {
       const filters: Array<(r: Lancamento) => boolean> = [];
+      const eqs: Record<string, unknown> = {};
+      selects.push(eqs);
       const query = {
         eq(column: keyof Lancamento, value: unknown) {
+          eqs[column] = value;
           filters.push((r) => r[column] === value);
           return query;
         },
@@ -125,8 +138,10 @@ export function createFakeLancamentosTable(categorias: () => ReadonlyArray<Categ
                     ),
                   };
                 }
+                const userId = typeof item.user_id === 'string' ? item.user_id : authUid();
                 const cat = categorias().find((c) => c.id === item.categoria_id);
-                if (!cat) {
+                // Trigger de snapshot: a categoria precisa ser do mesmo `user_id`.
+                if (!cat || cat.user_id !== userId) {
                   return {
                     data: null,
                     error: pgError('23503', 'Categoria inválida: não encontrada.'),
@@ -142,6 +157,8 @@ export function createFakeLancamentosTable(categorias: () => ReadonlyArray<Categ
                 novos.push(
                   makeLancamento({
                     id: `lan-${n}`,
+                    user_id: userId,
+                    criado_por: authUid(),
                     categoria_id: item.categoria_id,
                     data: item.data,
                     quantidade: item.quantidade,
@@ -182,6 +199,7 @@ export function createFakeLancamentosTable(categorias: () => ReadonlyArray<Categ
   return {
     handler,
     inserts,
+    selects,
     get rows(): readonly Lancamento[] {
       return rows;
     },
@@ -209,6 +227,7 @@ export function createFakeLancamentosTable(categorias: () => ReadonlyArray<Categ
       failNext = null;
       seq = 1;
       inserts.length = 0;
+      selects.length = 0;
     },
   };
 }

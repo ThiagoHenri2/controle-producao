@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { resumoKeys } from '@/features/relatorio/hooks';
 import type { ProfileRole } from '@/lib/database.types';
 import {
   createUser,
@@ -21,9 +22,14 @@ export function useAdminUsers() {
   return useQuery({ queryKey: adminKeys.users(), queryFn: listProfiles });
 }
 
+/** Lista de usuários (também usada pelo seletor de entregador) e a Equipe (papel/ativo). */
 function useInvalidateUsers() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: adminKeys.users() });
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: adminKeys.users() }),
+      queryClient.invalidateQueries({ queryKey: [...resumoKeys.all, 'equipe'] }),
+    ]);
 }
 
 export function useCreateUser() {

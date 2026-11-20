@@ -67,7 +67,10 @@ function renderPage() {
     session: null,
     profile: admin,
     isAuthenticated: true,
+    role: 'admin',
     isAdmin: true,
+    isGerente: false,
+    isGestor: true,
     loading: false,
     signIn: vi.fn(),
     signOut: vi.fn(),
@@ -108,7 +111,7 @@ describe('UsuariosPage', () => {
     expect(items).toHaveLength(3);
     expect(items[1]).toHaveTextContent('João Silva');
     expect(items[1]).toHaveTextContent('@joao');
-    expect(items[1]).toHaveTextContent('Usuário');
+    expect(items[1]).toHaveTextContent('Entregador');
     expect(items[1]).toHaveTextContent('Ativo');
     expect(items[2]).toHaveTextContent('Inativo');
     expect(items[0]).toHaveTextContent('Admin');
@@ -152,10 +155,86 @@ describe('UsuariosPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Criar' }));
 
     expect(mock.invoke).toHaveBeenCalledWith('admin-users', {
-      body: { action: 'create', nome: 'Pedro', username: 'pedro.s', password: '123456' },
+      body: {
+        action: 'create',
+        nome: 'Pedro',
+        username: 'pedro.s',
+        password: '123456',
+        role: 'user',
+      },
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(await screen.findByRole('status')).toHaveTextContent('Usuário pedro.s criado.');
+  });
+
+  it('cria um gerente pelo select "Papel" (Entregador é o padrão)', async () => {
+    renderPage();
+    const { user, dialog } = await openNewUser();
+    const papel = within(dialog).getByLabelText('Papel');
+    expect(papel).toHaveValue('user');
+    expect(
+      within(papel)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Entregador', 'Gerente', 'Admin']);
+    await user.type(within(dialog).getByLabelText('Nome'), 'Maria');
+    await user.type(within(dialog).getByLabelText('Usuário'), 'maria2');
+    await user.type(within(dialog).getByLabelText('Senha'), '123456');
+    await user.selectOptions(papel, 'gerente');
+    await user.click(within(dialog).getByRole('button', { name: 'Criar' }));
+
+    expect(mock.invoke).toHaveBeenCalledWith('admin-users', {
+      body: {
+        action: 'create',
+        nome: 'Maria',
+        username: 'maria2',
+        password: '123456',
+        role: 'gerente',
+      },
+    });
+  });
+
+  it('menu de papel: gerente, admin e entregador, com confirmação', async () => {
+    mock.users = [
+      ...mock.users,
+      { id: 'u-gil', nome: 'Gil', username: 'gil', role: 'gerente', ativo: true },
+    ];
+    const user = userEvent.setup();
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Usuários' });
+    const gil = within(list)
+      .getAllByRole('listitem')
+      .find((li) => within(li).queryByText('Gil'));
+    expect(gil).toHaveTextContent('Gerente');
+
+    // Entregador: pode virar gerente ou admin.
+    await user.click(screen.getByRole('button', { name: 'Ações de João Silva' }));
+    expect(screen.getByRole('button', { name: 'Tornar gerente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tornar admin' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tornar entregador' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Tornar gerente' }));
+    const confirm = screen.getByRole('alertdialog', { name: 'Tornar João Silva gerente?' });
+    expect(mock.invoke).not.toHaveBeenCalled();
+    await user.click(within(confirm).getByRole('button', { name: 'Tornar gerente' }));
+    expect(mock.invoke).toHaveBeenCalledWith('admin-users', {
+      body: { action: 'set_role', user_id: 'u-joao', role: 'gerente' },
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('João Silva agora é gerente.');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+
+    // Gerente: pode virar admin ou entregador.
+    await user.click(screen.getByRole('button', { name: 'Ações de Gil' }));
+    expect(screen.queryByRole('button', { name: 'Tornar gerente' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Tornar entregador' }));
+    await user.click(
+      within(screen.getByRole('alertdialog', { name: 'Tornar Gil entregador?' })).getByRole(
+        'button',
+        { name: 'Tornar entregador' },
+      ),
+    );
+    expect(mock.invoke).toHaveBeenLastCalledWith('admin-users', {
+      body: { action: 'set_role', user_id: 'u-gil', role: 'user' },
+    });
   });
 
   it('409 mostra "Usuário já existe" abaixo do campo e mantém o formulário', async () => {

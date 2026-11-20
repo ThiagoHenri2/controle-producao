@@ -100,8 +100,30 @@ describe('fetchResumo', () => {
     expect(err).toMatchObject({ kind: 'periodo_invalido', message: error.message });
   });
 
+  it('envia p_usuario só para outro entregador (gestor); 42501 vira "acesso negado"', async () => {
+    fakeSupabase.setRpcHandler('resumo_por_categoria', () => ({ data: [], error: null }));
+    fakeSupabase.setRpcHandler('resumo_por_dia', () => ({ data: [], error: null }));
+    await fetchResumo('2026-11-01', '2026-11-30', null, 'u-joao');
+    const comUsuario = { p_de: '2026-11-01', p_ate: '2026-11-30', p_usuario: 'u-joao' };
+    expect(fakeSupabase.rpc).toHaveBeenCalledWith('resumo_por_categoria', comUsuario);
+    expect(fakeSupabase.rpc).toHaveBeenCalledWith('resumo_por_dia', comUsuario);
+
+    fakeSupabase.rpc.mockClear();
+    await fetchResumo('2026-11-01', '2026-11-30');
+    for (const [, args] of fakeSupabase.rpc.mock.calls) {
+      expect(args).not.toHaveProperty('p_usuario');
+    }
+
+    const error = { code: '42501', message: 'Acesso negado' };
+    fakeSupabase.setRpcHandler('resumo_por_categoria', () => ({ data: null, error }));
+    await expect(fetchResumo('2026-11-01', '2026-11-30', null, 'u-ana')).rejects.toMatchObject({
+      kind: 'acesso_negado',
+      message: RELATORIO_ERROR_MESSAGES.acessoNegado,
+    });
+  });
+
   it('outros erros viram mensagem genérica (sem texto técnico)', async () => {
-    const error = { code: '42501', message: 'permission denied for function' };
+    const error = { code: 'PGRST000', message: 'connection refused' };
     fakeSupabase.setRpcHandler('resumo_por_categoria', () => ({ data: null, error }));
     fakeSupabase.setRpcHandler('resumo_por_dia', () => ({ data: [], error: null }));
     await expect(fetchResumo('2026-11-01', '2026-11-30')).rejects.toMatchObject({

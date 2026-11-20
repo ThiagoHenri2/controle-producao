@@ -19,3 +19,11 @@ export function AdminRoute() {
   if (!isAdmin) return <Navigate to={ROUTES.lancar} replace />;
   return <Outlet />;
 }
+
+/** Exige gestor (gerente ou admin, ativo); senão manda para /. Use dentro de um ProtectedRoute. */
+export function GestorRoute() {
+  const { isGestor, loading } = useAuth();
+  if (loading) return <AuthLoadingScreen />;
+  if (!isGestor) return <Navigate to={ROUTES.lancar} replace />;
+  return <Outlet />;
+}

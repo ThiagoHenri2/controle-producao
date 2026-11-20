@@ -43,7 +43,20 @@ describe('newUserSchema (igual ao backend)', () => {
       username: '  Joao.Silva ',
       password: '123456',
     });
-    expect(parsed).toEqual({ nome: 'João', username: 'joao.silva', password: '123456' });
+    expect(parsed).toEqual({
+      nome: 'João',
+      username: 'joao.silva',
+      password: '123456',
+      role: 'user',
+    });
+  });
+
+  it('role: entregador por padrão; aceita gerente e admin; rejeita outros', () => {
+    const base = { nome: 'X', username: 'abc', password: '123456' };
+    expect(newUserSchema.parse({ ...base, role: 'gerente' }).role).toBe('gerente');
+    expect(newUserSchema.parse({ ...base, role: 'admin' }).role).toBe('admin');
+    const result = newUserSchema.safeParse({ ...base, role: 'dono' });
+    expect(result.error?.issues[0]?.message).toBe(ADMIN_MESSAGES.roleInvalid);
   });
 
   it.each(['jo', 'a'.repeat(31), 'joão', 'jo ao', 'jo@o'])('rejeita username "%s"', (username) => {

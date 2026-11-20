@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AlertCircle, ChevronDown, Plus, Tags } from 'lucide-react';
 import { Button, EmptyState, SkeletonList } from '@/components/ui';
+import { UsuarioAlvoSelect } from '@/features/equipe/components/UsuarioAlvoSelect';
+import { useUsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { cn } from '@/lib/cn';
 import type { Categoria } from './api';
 import { CategoriaFormSheet } from './components/CategoriaFormSheet';
@@ -10,8 +12,10 @@ import { useCategorias } from './hooks';
 
 type SheetState = { open: false } | { open: true; categoria: Categoria | null };
 
+/** Categorias (spec 003). O gestor gerencia as de qualquer entregador (spec 008). */
 export function CategoriasPage() {
-  const { data, isPending, isError, refetch, isRefetching } = useCategorias({
+  const alvo = useUsuarioAlvo();
+  const { data, isPending, isError, refetch, isRefetching } = useCategorias(alvo.alvoId, {
     incluirInativas: true,
   });
   const [sheet, setSheet] = useState<SheetState>({ open: false });
@@ -24,34 +28,52 @@ export function CategoriasPage() {
     <CategoriaFormSheet
       key={sheet.categoria?.id ?? 'nova'}
       categoria={sheet.categoria}
+      userId={alvo.alvoId}
       existentes={data ?? []}
       onClose={() => setSheet({ open: false })}
     />
   );
 
-  if (isPending) return <SkeletonList rows={4} label="Carregando categorias…" />;
+  const seletor = <UsuarioAlvoSelect alvo={alvo} acao="vendo" rotulo="Categorias de" />;
+
+  if (isPending) {
+    return (
+      <div className="flex flex-col gap-4">
+        {seletor}
+        <SkeletonList rows={4} label="Carregando categorias…" />
+      </div>
+    );
+  }
 
   if (isError) {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title={CATEGORIA_ERROR_MESSAGES.carregar}
-        description="Verifique sua conexão e tente de novo."
-        action={
-          <Button fullWidth variant="secondary" loading={isRefetching} onClick={() => refetch()}>
-            Tentar de novo
-          </Button>
-        }
-      />
+      <div className="flex flex-col gap-4">
+        {seletor}
+        <EmptyState
+          icon={AlertCircle}
+          title={CATEGORIA_ERROR_MESSAGES.carregar}
+          description="Verifique sua conexão e tente de novo."
+          action={
+            <Button fullWidth variant="secondary" loading={isRefetching} onClick={() => refetch()}>
+              Tentar de novo
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
   if (data.length === 0) {
     return (
-      <>
+      <div className="flex flex-col gap-4">
+        {seletor}
         <EmptyState
           icon={Tags}
-          title="Cadastre sua primeira categoria"
+          title={
+            alvo.isEu
+              ? 'Cadastre sua primeira categoria'
+              : `Cadastre a primeira categoria de ${alvo.alvoNome}`
+          }
           description="Ex.: Sanduíche a R$ 2,50 ou Pizza a R$ 5,00. Depois é só lançar as entregas do dia."
           action={
             <Button
@@ -64,7 +86,7 @@ export function CategoriasPage() {
           }
         />
         {sheetEl}
-      </>
+      </div>
     );
   }
 
@@ -73,6 +95,7 @@ export function CategoriasPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {seletor}
       {ativas.length > 0 ? (
         <ul aria-label="Categorias ativas" className="flex flex-col gap-2">
           {ativas.map((c) => (

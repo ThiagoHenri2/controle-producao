@@ -16,7 +16,9 @@ export const AVISO_REAJUSTE = 'O novo valor vale para os próximos lançamentos.
 type CategoriaFormSheetProps = {
   /** `null` = nova categoria. */
   categoria: Categoria | null;
-  /** Lista completa (ativas e inativas) para checar nome duplicado. */
+  /** Dono da categoria nova (o próprio usuário ou o entregador alvo do gestor). */
+  userId: string;
+  /** Lista completa (ativas e inativas) do dono, para checar nome duplicado. */
   existentes: ReadonlyArray<Pick<Categoria, 'id' | 'nome'>>;
   onClose: () => void;
 };
@@ -24,7 +26,12 @@ type CategoriaFormSheetProps = {
 type DeleteStep = 'none' | 'confirm' | 'em_uso';
 
 /** Bottom sheet de criar/editar categoria, com excluir (e "Desativar" quando há lançamentos). */
-export function CategoriaFormSheet({ categoria, existentes, onClose }: CategoriaFormSheetProps) {
+export function CategoriaFormSheet({
+  categoria,
+  userId,
+  existentes,
+  onClose,
+}: CategoriaFormSheetProps) {
   const formId = useId();
   const toast = useToast();
   const createMutation = useCreateCategoria();
@@ -60,7 +67,7 @@ export function CategoriaFormSheet({ categoria, existentes, onClose }: Categoria
 
     if (editando) {
       updateMutation.mutate(
-        { id: categoria.id, patch: result.payload },
+        { id: categoria.id, userId: categoria.user_id, patch: result.payload },
         {
           onSuccess: () => {
             toast.success('Categoria salva.');
@@ -70,39 +77,45 @@ export function CategoriaFormSheet({ categoria, existentes, onClose }: Categoria
         },
       );
     } else {
-      createMutation.mutate(result.payload, {
-        onSuccess: () => {
-          toast.success('Categoria criada.');
-          onClose();
+      createMutation.mutate(
+        { ...result.payload, user_id: userId },
+        {
+          onSuccess: () => {
+            toast.success('Categoria criada.');
+            onClose();
+          },
+          onError,
         },
-        onError,
-      });
+      );
     }
   }
 
   function handleDelete() {
     if (!categoria) return;
-    deleteMutation.mutate(categoria.id, {
-      onSuccess: () => {
-        setDeleteStep('none');
-        toast.success('Categoria excluída.');
-        onClose();
+    deleteMutation.mutate(
+      { id: categoria.id, userId: categoria.user_id },
+      {
+        onSuccess: () => {
+          setDeleteStep('none');
+          toast.success('Categoria excluída.');
+          onClose();
+        },
+        onError: (err) => {
+          if (err.kind === 'em_uso' && categoria.ativa) {
+            setDeleteStep('em_uso');
+            return;
+          }
+          setDeleteStep('none');
+          toast.error(err.kind === 'em_uso' ? CATEGORIA_ERROR_MESSAGES.emUsoInativa : err.message);
+        },
       },
-      onError: (err) => {
-        if (err.kind === 'em_uso' && categoria.ativa) {
-          setDeleteStep('em_uso');
-          return;
-        }
-        setDeleteStep('none');
-        toast.error(err.kind === 'em_uso' ? CATEGORIA_ERROR_MESSAGES.emUsoInativa : err.message);
-      },
-    });
+    );
   }
 
   function handleDesativar() {
     if (!categoria) return;
     updateMutation.mutate(
-      { id: categoria.id, patch: { ativa: false } },
+      { id: categoria.id, userId: categoria.user_id, patch: { ativa: false } },
       {
         onSuccess: () => {
           setDeleteStep('none');

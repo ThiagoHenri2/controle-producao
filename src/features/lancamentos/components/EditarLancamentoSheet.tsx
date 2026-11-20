@@ -35,7 +35,7 @@ export function EditarLancamentoSheet({ lancamento, onClose }: EditarLancamentoS
     }
     setErrors({});
     updateMutation.mutate(
-      { id: lancamento.id, data: lancamento.data, patch: result.patch },
+      { id: lancamento.id, userId: lancamento.user_id, data: lancamento.data, patch: result.patch },
       {
         onSuccess: () => {
           toast.success('Lançamento atualizado.');
@@ -48,7 +48,7 @@ export function EditarLancamentoSheet({ lancamento, onClose }: EditarLancamentoS
 
   function handleDelete() {
     deleteMutation.mutate(
-      { id: lancamento.id, data: lancamento.data },
+      { id: lancamento.id, userId: lancamento.user_id, data: lancamento.data },
       {
         onSuccess: () => {
           setConfirmando(false);

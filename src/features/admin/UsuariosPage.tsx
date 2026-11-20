@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { Button, ConfirmDialog, EmptyState, SkeletonList, useToast } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
+import { ROLE_LABELS } from '@/features/auth/roles';
+import type { ProfileRole } from '@/lib/database.types';
 import type { AdminUser } from './api';
 import { AdminSheet } from './components/AdminSheet';
 import { NewUserSheet } from './components/NewUserSheet';
@@ -10,10 +12,12 @@ import { UserActionsList, type UserAction } from './components/UserActionsList';
 import { UserListItem } from './components/UserListItem';
 import { useAdminUsers, useSetUserActive, useSetUserRole } from './hooks';
 
-type Confirm = { kind: 'active' | 'role'; user: AdminUser };
+type Confirm =
+  { kind: 'active'; user: AdminUser } | { kind: 'role'; user: AdminUser; role: ProfileRole };
 
-function confirmCopy({ kind, user }: Confirm) {
-  if (kind === 'active') {
+function confirmCopy(confirm: Confirm) {
+  const { user } = confirm;
+  if (confirm.kind === 'active') {
     return user.ativo
       ? {
           title: `Desativar ${user.nome}?`,
@@ -28,19 +32,34 @@ function confirmCopy({ kind, user }: Confirm) {
           variant: 'primary' as const,
         };
   }
-  return user.role === 'admin'
-    ? {
-        title: `Tornar ${user.nome} usuário comum?`,
-        description: 'Ele deixa de gerenciar usuários.',
-        confirmLabel: 'Tornar usuário comum',
-        variant: 'danger' as const,
-      }
-    : {
+  switch (confirm.role) {
+    case 'gerente':
+      return {
+        title: `Tornar ${user.nome} gerente?`,
+        description:
+          user.role === 'admin'
+            ? 'Ele deixa de gerenciar usuários, mas continua vendo e lançando para todos os entregadores.'
+            : 'Ele poderá ver quanto pagar a cada entregador, lançar por eles e ajustar as categorias de todos.',
+        confirmLabel: 'Tornar gerente',
+        variant: 'primary' as const,
+      };
+    case 'admin':
+      return {
         title: `Tornar ${user.nome} admin?`,
-        description: 'Ele poderá criar, desativar e promover usuários.',
+        description:
+          'Ele poderá fazer tudo o que o gerente faz e também criar, desativar e promover usuários.',
         confirmLabel: 'Tornar admin',
         variant: 'primary' as const,
       };
+    case 'user':
+      return {
+        title: `Tornar ${user.nome} entregador?`,
+        description:
+          'Ele deixa de ver e de lançar os dados dos outros e passa a ver só os próprios.',
+        confirmLabel: 'Tornar entregador',
+        variant: 'danger' as const,
+      };
+  }
 }
 
 /** Administração de usuários (spec 006). Só admin chega aqui (AdminRoute). */
@@ -62,15 +81,17 @@ export function UsuariosPage() {
     const user = actionsFor;
     if (!user) return;
     setActionsFor(null);
-    if (action === 'reset_password') setResetFor(user);
-    else setConfirm({ kind: action === 'toggle_active' ? 'active' : 'role', user });
+    if (action.type === 'reset_password') setResetFor(user);
+    else if (action.type === 'toggle_active') setConfirm({ kind: 'active', user });
+    // Nunca sobre si mesmo (o item ⋮ nem aparece para o próprio admin).
+    else if (user.id !== profile?.id) setConfirm({ kind: 'role', user, role: action.role });
   }
 
   function handleConfirm() {
     if (!confirm) return;
-    const { kind, user } = confirm;
+    const { user } = confirm;
     const onError = (error: Error) => toast.error(error.message);
-    if (kind === 'active') {
+    if (confirm.kind === 'active') {
       const ativo = !user.ativo;
       setActive.mutate(
         { userId: user.id, ativo },
@@ -83,16 +104,12 @@ export function UsuariosPage() {
         },
       );
     } else {
-      const role = user.role === 'admin' ? 'user' : 'admin';
+      const { role } = confirm;
       setRole.mutate(
         { userId: user.id, role },
         {
           onSuccess: () => {
-            toast.success(
-              role === 'admin'
-                ? `${user.nome} agora é admin.`
-                : `${user.nome} agora é usuário comum.`,
-            );
+            toast.success(`${user.nome} agora é ${ROLE_LABELS[role].toLowerCase()}.`);
             setConfirm(null);
           },
           onError,

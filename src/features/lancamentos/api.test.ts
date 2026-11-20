@@ -4,7 +4,7 @@ import {
   createFakeCategoriasTable,
   makeCategoria,
 } from '@/features/categorias/testing/fakeCategoriasTable';
-import { createLancamentos, listLancamentosDoDia } from './api';
+import { createLancamentos, idsDeOutrosAutores, listLancamentosDoDia } from './api';
 import { LancamentoError, toLancamentoError } from './errors';
 import { montarItens, subtotalCentavos, totalCentavos, validarEdicao } from './schema';
 import { createFakeLancamentosTable } from './testing/fakeLancamentosTable';
@@ -115,10 +115,10 @@ describe('api de lançamentos', () => {
 
   it('insert em lote congela o preço; reajuste não altera o histórico', async () => {
     const hoje = '2026-01-10';
-    await createLancamentos(hoje, [{ categoria_id: 'cat-p', quantidade: 20 }]);
+    await createLancamentos('user-1', hoje, [{ categoria_id: 'cat-p', quantidade: 20 }]);
     categorias.seed([makeCategoria({ id: 'cat-p', nome: 'Pizza', valor_unitario: 6 })]);
-    await createLancamentos(hoje, [{ categoria_id: 'cat-p', quantidade: 1 }]);
-    const lista = await listLancamentosDoDia(hoje);
+    await createLancamentos('user-1', hoje, [{ categoria_id: 'cat-p', quantidade: 1 }]);
+    const lista = await listLancamentosDoDia('user-1', hoje);
     expect(lista.map((l) => [l.valor_unitario, l.valor_total, l.categoria?.nome])).toEqual([
       [5, 100, 'Pizza'],
       [6, 6, 'Pizza'],
@@ -126,15 +126,49 @@ describe('api de lançamentos', () => {
   });
 
   it('lista vazia não faz request', async () => {
-    expect(await createLancamentos('2026-01-10', [])).toEqual([]);
+    expect(await createLancamentos('user-1', '2026-01-10', [])).toEqual([]);
     expect(lancamentos.inserts).toHaveLength(0);
   });
 
   it('categoria inativa vira erro amigável e nada é gravado', async () => {
     categorias.seed([makeCategoria({ id: 'cat-p', ativa: false })]);
     await expect(
-      createLancamentos('2026-01-10', [{ categoria_id: 'cat-p', quantidade: 1 }]),
+      createLancamentos('user-1', '2026-01-10', [{ categoria_id: 'cat-p', quantidade: 1 }]),
     ).rejects.toMatchObject({ kind: 'categoria_inativa' });
     expect(lancamentos.rows).toHaveLength(0);
+  });
+
+  it('insert envia user_id do alvo e nunca criado_por; a lista filtra por user_id', async () => {
+    categorias.seed([
+      makeCategoria({ id: 'cat-p', nome: 'Pizza', valor_unitario: 5 }),
+      makeCategoria({ id: 'cat-j', nome: 'Pizza', valor_unitario: 4, user_id: 'joao' }),
+    ]);
+    await createLancamentos('joao', '2026-01-10', [{ categoria_id: 'cat-j', quantidade: 2 }]);
+    await createLancamentos('user-1', '2026-01-10', [{ categoria_id: 'cat-p', quantidade: 1 }]);
+    expect(lancamentos.inserts[0]).toEqual([
+      { user_id: 'joao', data: '2026-01-10', categoria_id: 'cat-j', quantidade: 2 },
+    ]);
+    expect(lancamentos.inserts[0]?.[0]).not.toHaveProperty('criado_por');
+
+    const doJoao = await listLancamentosDoDia('joao', '2026-01-10');
+    expect(doJoao.map((l) => [l.user_id, l.valor_total])).toEqual([['joao', 8]]);
+    const meus = await listLancamentosDoDia('user-1', '2026-01-10');
+    expect(meus.map((l) => l.user_id)).toEqual(['user-1']);
+    expect(lancamentos.selects.slice(-2)).toEqual([
+      { user_id: 'joao', data: '2026-01-10' },
+      { user_id: 'user-1', data: '2026-01-10' },
+    ]);
+  });
+
+  it('idsDeOutrosAutores: só criado_por ≠ user_id e não nulo, ordenados e únicos', () => {
+    expect(
+      idsDeOutrosAutores([
+        { user_id: 'joao', criado_por: 'maria' },
+        { user_id: 'joao', criado_por: 'joao' },
+        { user_id: 'joao', criado_por: null },
+        { user_id: 'ana', criado_por: 'carla' },
+        { user_id: 'ana', criado_por: 'maria' },
+      ]),
+    ).toEqual(['carla', 'maria']);
   });
 });

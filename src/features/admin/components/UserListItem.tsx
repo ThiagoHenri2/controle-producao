@@ -1,4 +1,5 @@
 import { MoreVertical } from 'lucide-react';
+import { PapelBadge } from '@/features/auth/components/PapelBadge';
 import { cn } from '@/lib/cn';
 import type { AdminUser } from '../api';
 
@@ -7,10 +8,6 @@ type UserListItemProps = {
   isSelf: boolean;
   onOpenActions: (user: AdminUser) => void;
 };
-
-function roleLabel(role: AdminUser['role']): string {
-  return role === 'admin' ? 'Admin' : 'Usuário';
-}
 
 /** Linha da lista: nome, @usuário, papel, ativo/inativo e menu ⋮. */
 export function UserListItem({ user, isSelf, onOpenActions }: UserListItemProps) {
@@ -31,16 +28,7 @@ export function UserListItem({ user, isSelf, onOpenActions }: UserListItemProps)
         <div className="flex min-w-0 items-center gap-2 text-sm text-slate-600">
           <span className="truncate">@{user.username}</span>
           <span aria-hidden>·</span>
-          <span
-            className={cn(
-              'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
-              user.role === 'admin'
-                ? 'bg-primary-soft text-primary-hover'
-                : 'bg-slate-100 text-slate-700',
-            )}
-          >
-            {roleLabel(user.role)}
-          </span>
+          <PapelBadge role={user.role} />
         </div>
       </div>
 

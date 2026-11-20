@@ -3,6 +3,7 @@ import {
   createCategoria,
   deleteCategoria,
   listCategorias,
+  listNomesCategorias,
   updateCategoria,
   type Categoria,
   type CategoriaInsert,
@@ -10,47 +11,75 @@ import {
 } from './api';
 import type { CategoriaError } from './errors';
 
+/**
+ * Query keys de categorias. As listas são por dono (`userId`): o gestor vê as
+ * categorias do entregador alvo (spec 008).
+ */
 export const categoriaKeys = {
   all: ['categorias'] as const,
   lists: () => [...categoriaKeys.all, 'list'] as const,
-  list: (incluirInativas: boolean) => [...categoriaKeys.lists(), { incluirInativas }] as const,
+  user: (userId: string) => [...categoriaKeys.lists(), userId] as const,
+  list: (userId: string, incluirInativas: boolean) =>
+    [...categoriaKeys.user(userId), { incluirInativas }] as const,
+  /** Nomes de todas as categorias visíveis (filtro da tela Equipe). */
+  nomes: () => [...categoriaKeys.all, 'nomes'] as const,
 };
 
-/** Lista de categorias. Use `incluirInativas: false` na tela Lançar. */
-export function useCategorias({ incluirInativas = false }: { incluirInativas?: boolean } = {}) {
+/** Categorias de `userId`. Use `incluirInativas: false` na tela Lançar. */
+export function useCategorias(
+  userId: string,
+  { incluirInativas = false }: { incluirInativas?: boolean } = {},
+) {
   return useQuery<Categoria[], CategoriaError>({
-    queryKey: categoriaKeys.list(incluirInativas),
-    queryFn: () => listCategorias({ incluirInativas }),
+    queryKey: categoriaKeys.list(userId, incluirInativas),
+    queryFn: () => listCategorias(userId, { incluirInativas }),
+    enabled: Boolean(userId),
   });
 }
 
+/** Nomes de todas as categorias visíveis ao usuário (o gestor vê as de todos). */
+export function useNomesCategorias({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery<string[], CategoriaError>({
+    queryKey: categoriaKeys.nomes(),
+    queryFn: listNomesCategorias,
+    enabled,
+  });
+}
+
+/** Invalida as listas do dono afetado e os nomes (filtro da Equipe). */
 function useInvalidateCategorias() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: categoriaKeys.all });
+  return (userId: string) =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: categoriaKeys.user(userId) }),
+      queryClient.invalidateQueries({ queryKey: categoriaKeys.nomes() }),
+    ]);
 }
 
 export function useCreateCategoria() {
   const invalidate = useInvalidateCategorias();
   return useMutation<Categoria, CategoriaError, CategoriaInsert>({
     mutationFn: createCategoria,
-    onSettled: invalidate,
+    onSettled: (_res, _err, vars) => invalidate(vars.user_id),
   });
 }
 
-export type UpdateCategoriaVars = { id: string; patch: CategoriaPatch };
+export type UpdateCategoriaVars = { id: string; userId: string; patch: CategoriaPatch };
 
 export function useUpdateCategoria() {
   const invalidate = useInvalidateCategorias();
   return useMutation<Categoria, CategoriaError, UpdateCategoriaVars>({
     mutationFn: ({ id, patch }) => updateCategoria(id, patch),
-    onSettled: invalidate,
+    onSettled: (_res, _err, vars) => invalidate(vars.userId),
   });
 }
 
+export type DeleteCategoriaVars = { id: string; userId: string };
+
 export function useDeleteCategoria() {
   const invalidate = useInvalidateCategorias();
-  return useMutation<void, CategoriaError, string>({
-    mutationFn: deleteCategoria,
-    onSettled: invalidate,
+  return useMutation<void, CategoriaError, DeleteCategoriaVars>({
+    mutationFn: ({ id }) => deleteCategoria(id),
+    onSettled: (_res, _err, vars) => invalidate(vars.userId),
   });
 }

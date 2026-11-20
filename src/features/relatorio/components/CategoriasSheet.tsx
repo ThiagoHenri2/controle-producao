@@ -1,13 +1,18 @@
 import { useId, useState } from 'react';
 import { BottomSheet, Button } from '@/components/ui';
-import type { Categoria } from '@/features/categorias/api';
 import { cn } from '@/lib/cn';
 import type { FiltroCategorias } from '../api';
 import { FILTRO_MESSAGES } from '../filtroCategorias';
 
+/**
+ * Opção da checklist: uma categoria do usuário (Relatório) ou um nome de
+ * categoria agrupado (Equipe, onde `id` é o nome normalizado).
+ */
+export type OpcaoCategoria = { id: string; nome: string; ativa?: boolean };
+
 type CategoriasSheetProps = {
-  /** Todas as categorias do usuário (ativas primeiro, depois inativas, por nome). */
-  categorias: readonly Categoria[];
+  /** Opções na ordem da lista (no Relatório: ativas primeiro, depois inativas, por nome). */
+  categorias: readonly OpcaoCategoria[];
   /** Seleção atual (`null` = todas). */
   selecionadas: FiltroCategorias;
   /** Recebe os IDs marcados, na ordem da lista. */
@@ -105,12 +110,12 @@ export function CategoriasSheet({
                 <span
                   className={cn(
                     'min-w-0 flex-1 truncate font-medium',
-                    c.ativa ? 'text-slate-900' : 'text-slate-600',
+                    c.ativa === false ? 'text-slate-600' : 'text-slate-900',
                   )}
                 >
                   {c.nome}
                 </span>
-                {!c.ativa && (
+                {c.ativa === false && (
                   <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                     inativa
                   </span>

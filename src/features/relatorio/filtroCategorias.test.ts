@@ -44,17 +44,20 @@ describe('filtro de categorias', () => {
 
   it('query key: categorias ordenadas ou "todas", sob o prefixo resumo', () => {
     expect(catsQueryKey(null)).toBe('todas');
-    expect(resumoKeys.periodo('2026-11-01', '2026-11-30', ['c', 'a'])).toEqual([
+    expect(resumoKeys.periodo('u1', '2026-11-01', '2026-11-30', ['c', 'a'])).toEqual([
       'resumo',
+      'u1',
       '2026-11-01',
       '2026-11-30',
       'a,c',
     ]);
-    expect(resumoKeys.periodo('2026-11-01', '2026-11-30', ['a', 'c'])).toEqual(
-      resumoKeys.periodo('2026-11-01', '2026-11-30', ['c', 'a']),
+    expect(resumoKeys.periodo('u1', '2026-11-01', '2026-11-30', ['a', 'c'])).toEqual(
+      resumoKeys.periodo('u1', '2026-11-01', '2026-11-30', ['c', 'a']),
     );
-    expect(resumoKeys.periodo('2026-11-01', '2026-11-30')[3]).toBe('todas');
-    expect(resumoKeys.periodo('2026-11-01', '2026-11-30').slice(0, 1)).toEqual([...resumoKeys.all]);
+    expect(resumoKeys.periodo('u1', '2026-11-01', '2026-11-30')[4]).toBe('todas');
+    expect(resumoKeys.periodo('u1', '2026-11-01', '2026-11-30').slice(0, 1)).toEqual([
+      ...resumoKeys.all,
+    ]);
   });
 
   it('rótulo: Todas / nome da única / X de Y', () => {

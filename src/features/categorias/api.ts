@@ -3,16 +3,26 @@ import { supabase } from '@/lib/supabase';
 import { CATEGORIA_ERROR_MESSAGES, toCategoriaError } from './errors';
 
 export type Categoria = Tables<'categorias'>;
-export type CategoriaInsert = { nome: string; valor_unitario: number; ativa?: boolean };
+/** `user_id` = dono da categoria (o próprio usuário ou, para o gestor, o entregador alvo). */
+export type CategoriaInsert = {
+  user_id: string;
+  nome: string;
+  valor_unitario: number;
+  ativa?: boolean;
+};
 export type CategoriaPatch = Pick<TablesUpdate<'categorias'>, 'nome' | 'valor_unitario' | 'ativa'>;
 
 export type ListCategoriasParams = { incluirInativas?: boolean };
 
-/** Categorias do usuário logado (RLS): ativas primeiro, depois por nome. */
-export async function listCategorias({
-  incluirInativas = false,
-}: ListCategoriasParams = {}): Promise<Categoria[]> {
-  let query = supabase.from('categorias').select('*');
+/**
+ * Categorias de `userId`: ativas primeiro, depois por nome. O filtro por
+ * `user_id` é obrigatório: para o gestor a RLS libera as categorias de todos (spec 008).
+ */
+export async function listCategorias(
+  userId: string,
+  { incluirInativas = false }: ListCategoriasParams = {},
+): Promise<Categoria[]> {
+  let query = supabase.from('categorias').select('*').eq('user_id', userId);
   if (!incluirInativas) query = query.eq('ativa', true);
   const { data, error } = await query
     .order('ativa', { ascending: false })
@@ -21,11 +31,16 @@ export async function listCategorias({
   return data ?? [];
 }
 
-/** Cria a categoria. `user_id` vem do default `auth.uid()` do banco. */
+/** Cria a categoria para `input.user_id` (a RLS só aceita o próprio id ou, para o gestor, qualquer um). */
 export async function createCategoria(input: CategoriaInsert): Promise<Categoria> {
   const { data, error } = await supabase
     .from('categorias')
-    .insert({ nome: input.nome.trim(), valor_unitario: input.valor_unitario, ativa: input.ativa })
+    .insert({
+      user_id: input.user_id,
+      nome: input.nome.trim(),
+      valor_unitario: input.valor_unitario,
+      ativa: input.ativa,
+    })
     .select()
     .single();
   if (error) throw toCategoriaError(error, CATEGORIA_ERROR_MESSAGES.salvar);
@@ -50,4 +65,14 @@ export async function updateCategoria(id: string, patch: CategoriaPatch): Promis
 export async function deleteCategoria(id: string): Promise<void> {
   const { error } = await supabase.from('categorias').delete().eq('id', id);
   if (error) throw toCategoriaError(error, CATEGORIA_ERROR_MESSAGES.excluir);
+}
+
+/**
+ * Nomes de todas as categorias visíveis (para o gestor, de todos os usuários).
+ * Usado no filtro por nome da tela Equipe.
+ */
+export async function listNomesCategorias(): Promise<string[]> {
+  const { data, error } = await supabase.from('categorias').select('nome');
+  if (error) throw toCategoriaError(error, CATEGORIA_ERROR_MESSAGES.carregar);
+  return (data ?? []).map((r) => r.nome);
 }

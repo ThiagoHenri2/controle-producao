@@ -4,7 +4,9 @@
  * ESCRITO À MÃO a partir de `supabase/migrations/0001_schema_inicial.sql`,
  * porque a CLI ainda não está autenticada neste ambiente. Ajustes manuais em
  * relação ao gerador:
- *   - `profiles.role` é `'admin' | 'user'` (o gerador daria `string`, pois é um CHECK);
+ *   - `profiles.role` é `'admin' | 'gerente' | 'user'` (o gerador daria `string`, pois é um CHECK);
+ *   - `lancamentos.Insert.criado_por` não existe: o trigger da migration 0006 grava
+ *     `auth.uid()` (o front nunca envia o autor);
  *   - `lancamentos.Insert.valor_unitario` é opcional (o trigger
  *     `lancamentos_preco_snapshot` copia o preço da categoria);
  *   - `lancamentos.valor_total` (coluna gerada) não aparece em Insert/Update.
@@ -17,7 +19,19 @@
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type ProfileRole = 'admin' | 'user';
+export type ProfileRole = 'admin' | 'gerente' | 'user';
+
+/** Linha devolvida por `resumo_por_usuario` e `resumo_por_usuario_nomes` (migration 0006). */
+export type ResumoUsuarioRow = {
+  user_id: string;
+  nome: string;
+  username: string;
+  role: ProfileRole;
+  ativo: boolean;
+  quantidade: number;
+  valor: number;
+  total_geral: number;
+};
 
 export type Database = {
   // Permite ao supabase-js inferir a versão do PostgREST (igual ao gerador).
@@ -60,6 +74,8 @@ export type Database = {
         Row: {
           categoria_id: string;
           created_at: string;
+          /** Autor do lançamento (migration 0006). `null` se o autor foi apagado. */
+          criado_por: string | null;
           data: string;
           id: string;
           observacao: string | null;
@@ -130,13 +146,19 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      autores: {
+        Args: { p_ids: string[] };
+        Returns: { id: string; nome: string }[];
+      };
       is_admin: { Args: never; Returns: boolean };
       is_ativo: { Args: never; Returns: boolean };
+      is_gestor: { Args: never; Returns: boolean };
       // Migrations 0003_resumo.sql e 0005_resumo_filtro_categorias.sql (spec 005).
       // `p_categorias` omitido/null = todas as categorias.
+      // `p_usuario` (0006) omitido/null = o próprio usuário; outro id exige gestor (42501).
       // `bigint`/`numeric` → number; `date`/`uuid` → string.
       resumo_por_categoria: {
-        Args: { p_ate: string; p_categorias?: string[]; p_de: string };
+        Args: { p_ate: string; p_categorias?: string[]; p_de: string; p_usuario?: string };
         Returns: {
           ativa: boolean;
           categoria_id: string;
@@ -147,12 +169,21 @@ export type Database = {
         }[];
       };
       resumo_por_dia: {
-        Args: { p_ate: string; p_categorias?: string[]; p_de: string };
+        Args: { p_ate: string; p_categorias?: string[]; p_de: string; p_usuario?: string };
         Returns: {
           data: string;
           quantidade: number;
           valor: number;
         }[];
+      };
+      // Migration 0006 (spec 008): só gestor, senão 42501. Inclui todos os perfis.
+      resumo_por_usuario: {
+        Args: { p_ate: string; p_categorias?: string[]; p_de: string };
+        Returns: ResumoUsuarioRow[];
+      };
+      resumo_por_usuario_nomes: {
+        Args: { p_ate: string; p_de: string; p_nomes?: string[] };
+        Returns: ResumoUsuarioRow[];
       };
     };
     Enums: {

@@ -7,12 +7,14 @@ import { getNavItems, getPageTitle } from './navigation';
 type AppLayoutProps = {
   /** Mostra o item "Usuários" na BottomNav. A spec 002 liga isso ao perfil. */
   isAdmin?: boolean;
+  /** Mostra o item "Equipe" (gerente ou admin, spec 008). Padrão: igual a `isAdmin`. */
+  isGestor?: boolean;
   /** Ações do cabeçalho (ponto de encaixe do botão "Sair" da spec 002). */
   headerActions?: ReactNode;
 };
 
 /** Cabeçalho compacto + conteúdo em coluna única + BottomNav fixa. */
-export function AppLayout({ isAdmin = false, headerActions }: AppLayoutProps) {
+export function AppLayout({ isAdmin = false, isGestor = isAdmin, headerActions }: AppLayoutProps) {
   const { pathname } = useLocation();
 
   return (
@@ -26,7 +28,7 @@ export function AppLayout({ isAdmin = false, headerActions }: AppLayoutProps) {
         <InstallBanner />
         <Outlet />
       </main>
-      <BottomNav items={getNavItems({ isAdmin })} />
+      <BottomNav items={getNavItems({ isAdmin, isGestor })} />
     </div>
   );
 }

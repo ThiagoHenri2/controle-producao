@@ -18,6 +18,8 @@ export type Periodo = Intervalo & { tipo: PeriodoTipo };
 
 export const PERIODO_PADRAO: PeriodoRapido = 'mes';
 export const PERIODOS_RAPIDOS: readonly PeriodoRapido[] = ['hoje', 'semana', 'mes'];
+/** Parâmetros da query string que representam o período. */
+export const PERIODO_PARAMS = ['periodo', 'de', 'ate'] as const;
 /** Máximo de dias do intervalo, contando início e fim (igual à RPC). */
 export const MAX_DIAS = 366;
 

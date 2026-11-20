@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { ROLES } from '@/features/auth/roles';
+import type { ProfileRole } from '@/lib/database.types';
 
 /** Mesmas regras da Edge Function `admin-users` (spec 006). */
 export const USERNAME_REGEX = /^[a-z0-9._-]{3,30}$/;
@@ -10,6 +12,7 @@ export const ADMIN_MESSAGES = {
   usernameRequired: 'Informe o usuário.',
   usernameInvalid: 'Use de 3 a 30 caracteres: letras minúsculas, números, ponto, hífen ou _.',
   passwordMin: `A senha precisa ter pelo menos ${PASSWORD_MIN} caracteres.`,
+  roleInvalid: 'Escolha um papel válido.',
 } as const;
 
 /** trim + minúsculas, igual ao backend. */
@@ -26,10 +29,16 @@ export const usernameSchema = z
 
 export const passwordSchema = z.string().min(PASSWORD_MIN, ADMIN_MESSAGES.passwordMin);
 
+/** Papel: 'user' (Entregador), 'gerente' ou 'admin' (spec 008). */
+export const roleSchema = z.enum(ROLES as readonly [ProfileRole, ...ProfileRole[]], {
+  error: ADMIN_MESSAGES.roleInvalid,
+});
+
 export const newUserSchema = z.object({
   nome: z.string().trim().min(1, ADMIN_MESSAGES.nomeRequired).max(80, ADMIN_MESSAGES.nomeMax),
   username: usernameSchema,
   password: passwordSchema,
+  role: roleSchema.default('user'),
 });
 
 export type NewUserInput = z.infer<typeof newUserSchema>;

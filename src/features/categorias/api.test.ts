@@ -43,22 +43,38 @@ describe('api de categorias', () => {
       makeCategoria({ id: 'b', nome: 'Água', ativa: false }),
       makeCategoria({ id: 'c', nome: 'Sanduíche' }),
     ]);
-    expect((await listCategorias({ incluirInativas: true })).map((c) => c.nome)).toEqual([
+    expect((await listCategorias('user-1', { incluirInativas: true })).map((c) => c.nome)).toEqual([
       'Pizza',
       'Sanduíche',
       'Água',
     ]);
-    expect((await listCategorias()).map((c) => c.nome)).toEqual(['Pizza', 'Sanduíche']);
+    expect((await listCategorias('user-1')).map((c) => c.nome)).toEqual(['Pizza', 'Sanduíche']);
+  });
+
+  it('filtra sempre por user_id (o gestor vê as de todos pela RLS, spec 008)', async () => {
+    table.seed([
+      makeCategoria({ id: 'a', nome: 'Pizza', user_id: 'user-1' }),
+      makeCategoria({ id: 'b', nome: 'Pizza', user_id: 'joao' }),
+    ]);
+    expect((await listCategorias('joao')).map((c) => c.id)).toEqual(['b']);
+    expect((await listCategorias('user-1')).map((c) => c.id)).toEqual(['a']);
+    expect(table.selects).toEqual([
+      { user_id: 'joao', ativa: true },
+      { user_id: 'user-1', ativa: true },
+    ]);
   });
 
   it('cria com nome sem espaços nas pontas', async () => {
-    const cat = await createCategoria({ nome: '  Pizza ', valor_unitario: 5 });
-    expect(cat).toMatchObject({ nome: 'Pizza', valor_unitario: 5, ativa: true });
+    const cat = await createCategoria({ user_id: 'joao', nome: '  Pizza ', valor_unitario: 5 });
+    expect(cat).toMatchObject({ user_id: 'joao', nome: 'Pizza', valor_unitario: 5, ativa: true });
+    expect(table.inserts[0]).toMatchObject({ user_id: 'joao', nome: 'Pizza' });
   });
 
   it('nome duplicado vira CategoriaError "duplicado"', async () => {
     table.seed([makeCategoria({ nome: 'Pizza' })]);
-    await expect(createCategoria({ nome: 'Pizza', valor_unitario: 5 })).rejects.toMatchObject({
+    await expect(
+      createCategoria({ user_id: 'user-1', nome: 'Pizza', valor_unitario: 5 }),
+    ).rejects.toMatchObject({
       kind: 'duplicado',
       message: CATEGORIA_ERROR_MESSAGES.duplicado,
     });
@@ -80,7 +96,7 @@ describe('api de categorias', () => {
 
   it('erro de rede ao listar usa a mensagem de carregamento', async () => {
     table.failNext('PGRST000', 'connection refused');
-    await expect(listCategorias()).rejects.toMatchObject({
+    await expect(listCategorias('user-1')).rejects.toMatchObject({
       message: CATEGORIA_ERROR_MESSAGES.carregar,
     });
   });

@@ -5,6 +5,7 @@ import { AUTH_MESSAGES, SignInError, usernameToEmail } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { AuthContext, type AuthContextValue } from './auth-context';
 import { profileQueryOptions, useProfile } from './hooks';
+import { isGestorRole } from './roles';
 
 /** Falha de rede/servidor (não é "senha errada"). */
 function isUnexpectedAuthError(error: AuthError): boolean {
@@ -86,11 +87,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     const isAuthenticated = Boolean(session) && profile?.ativo === true;
+    const role = isAuthenticated && profile ? profile.role : null;
     return {
       session,
       profile,
       isAuthenticated,
-      isAdmin: isAuthenticated && profile?.role === 'admin',
+      role,
+      isAdmin: role === 'admin',
+      isGerente: role === 'gerente',
+      isGestor: isGestorRole(role),
       loading: !initialized || (Boolean(session) && profileQuery.isPending),
       signIn,
       signOut,

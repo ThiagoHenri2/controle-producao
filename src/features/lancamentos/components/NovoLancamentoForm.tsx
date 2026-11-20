@@ -10,6 +10,8 @@ import { useKeyboardInset } from '../useKeyboardInset';
 type NovoLancamentoFormProps = {
   /** Só categorias ativas. */
   categorias: ReadonlyArray<Categoria>;
+  /** Dono dos lançamentos (o próprio usuário ou o entregador alvo do gestor). */
+  userId: string;
   /** Data do lançamento, `yyyy-MM-dd`. */
   data: string;
   hoje: string;
@@ -20,6 +22,7 @@ type NovoLancamentoFormProps = {
 /** Um Stepper por categoria ativa + barra fixa "Subtotal · Salvar" acima da BottomNav. */
 export function NovoLancamentoForm({
   categorias,
+  userId,
   data,
   hoje,
   onSavingChange,
@@ -41,7 +44,7 @@ export function NovoLancamentoForm({
     if (itens.length === 0) return;
     onSavingChange?.(true);
     createMutation.mutate(
-      { data, itens },
+      { userId, data, itens },
       {
         onSuccess: (rows) => {
           // Total oficial: soma do `valor_total` gravado (preço congelado), em centavos.

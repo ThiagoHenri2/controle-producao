@@ -1,4 +1,4 @@
-import { PlusCircle, BarChart3, Tags, Users } from 'lucide-react';
+import { PlusCircle, BarChart3, Tags, Users, Wallet } from 'lucide-react';
 import type { BottomNavItem } from '@/components/ui';
 
 export const ROUTES = {
@@ -6,6 +6,7 @@ export const ROUTES = {
   lancar: '/',
   relatorio: '/relatorio',
   categorias: '/categorias',
+  equipe: '/equipe',
   usuarios: '/admin/usuarios',
 } as const;
 
@@ -15,16 +16,31 @@ const baseItems: BottomNavItem[] = [
   { to: ROUTES.categorias, label: 'Categorias', icon: Tags },
 ];
 
+const equipeItem: BottomNavItem = { to: ROUTES.equipe, label: 'Equipe', icon: Wallet };
 const adminItem: BottomNavItem = { to: ROUTES.usuarios, label: 'Usuários', icon: Users };
 
-export function getNavItems({ isAdmin }: { isAdmin: boolean }): BottomNavItem[] {
-  return isAdmin ? [...baseItems, adminItem] : baseItems;
+/**
+ * Itens da BottomNav por papel (spec 008):
+ * entregador: Lançar · Relatório · Categorias; gerente: + Equipe; admin: + Equipe + Usuários.
+ */
+export function getNavItems({
+  isAdmin,
+  isGestor = isAdmin,
+}: {
+  isAdmin: boolean;
+  isGestor?: boolean;
+}): BottomNavItem[] {
+  const items = [...baseItems];
+  if (isGestor || isAdmin) items.push(equipeItem);
+  if (isAdmin) items.push(adminItem);
+  return items;
 }
 
 const titles: Record<string, string> = {
   [ROUTES.lancar]: 'Lançar',
   [ROUTES.relatorio]: 'Relatório',
   [ROUTES.categorias]: 'Categorias',
+  [ROUTES.equipe]: 'Equipe',
   [ROUTES.usuarios]: 'Usuários',
 };
 

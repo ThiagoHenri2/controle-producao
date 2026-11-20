@@ -13,6 +13,8 @@ export type TotalCardFiltro = {
 };
 
 type TotalCardProps = {
+  /** Padrão: "Total no período". */
+  titulo?: string;
   totalGeral: number;
   quantidadeTotal: number;
   /** Presente só com filtro de categorias ativo. */
@@ -20,12 +22,17 @@ type TotalCardProps = {
 };
 
 /** Destaque com o total em R$ do período (calculado pelo banco, já filtrado). */
-export function TotalCard({ totalGeral, quantidadeTotal, filtro }: TotalCardProps) {
+export function TotalCard({
+  titulo = 'Total no período',
+  totalGeral,
+  quantidadeTotal,
+  filtro,
+}: TotalCardProps) {
   const titleId = useId();
   return (
     <Card role="region" aria-labelledby={titleId} className="border-primary/30 bg-primary-soft">
       <h2 id={titleId} className="text-sm font-medium text-slate-700">
-        Total no período
+        {titulo}
       </h2>
       <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">{formatBRL(totalGeral)}</p>
       <p className="mt-1 text-base font-medium tabular-nums text-slate-700">

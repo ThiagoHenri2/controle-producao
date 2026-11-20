@@ -107,6 +107,19 @@ Criar o papel **gerente** para acompanhar **quanto será pago a cada entregador*
   - gerente: + Equipe;
   - admin: + Equipe + Usuários (5 itens, que precisam caber em 360px).
 
+## Notas de implementação do front (T008.4–T008.9)
+- **Filtro explícito por dono:** como a RLS deixa o gestor ver as linhas de todos, as listas de Lançar e Categorias sempre filtram com `.eq('user_id', alvo)`, inclusive quando o alvo é "eu". O insert de lançamentos e categorias também sempre envia `user_id` (para o próprio usuário, isso equivale ao default `auth.uid()`). `criado_por` nunca é enviado.
+- **`p_usuario`** só é enviado quando o alvo é outro usuário. Para "eu", o parâmetro é omitido, o que mantém a compatibilidade com o banco anterior à 0006.
+- **Query keys por dono:** `['categorias','list',userId,…]`, `['lancamentos',userId,data]`, `['resumo',userId,de,ate,cats]`. A Equipe fica em `['resumo','equipe',de,ate,nomes]`, então as mutations de lançamento (que invalidam `['resumo']`) também atualizam a Equipe. Os nomes do selo usam `['autores', ids ordenados]`.
+- **`?usuario` inválido:** para o gestor, um id que não está na lista de perfis (depois de carregada) vale como "eu". Para o entregador, o parâmetro é sempre ignorado.
+- **A navegação pela BottomNav não leva `?usuario`.** Ao trocar de aba, o alvo volta a ser "eu". Os links internos levam o alvo: o "Cadastrar categorias" de Lançar, o "Lançar entregas" do Relatório vazio e Equipe → Relatório.
+- **O seletor tem rótulo por tela:** "Lançando para" (Lançar), "Categorias de" (Categorias) e "Relatório de" (Relatório). A faixa diz "lançando" em Lançar e "vendo" nas outras telas. O bloco do gestor é índigo e fica acima da data; a faixa âmbar de data continua abaixo do seletor de data. A faixa tem o atalho "Voltar para mim".
+- **Lista do seletor:** "Eu" primeiro, depois os perfis ativos por nome. Um alvo inativo (aberto pela Equipe) continua na lista. A lista vem da mesma query da tela de admin (`profiles`, todos os perfis).
+- **Selo:** mostra "por <nome>", sem o papel entre parênteses, porque a RPC `autores` devolve só `(id, nome)`.
+- **Equipe:** o filtro por nome fica na URL como parâmetro repetido (`?nomes=pizza&nomes=sanduíche`), porque um nome de categoria pode conter vírgula. As chaves são normalizadas com trim + minúsculas, e a checklist mostra a grafia mais comum. Na lista, o selo de papel aparece só para Gerente/Admin, e o selo Inativo aparece quando o perfil está inativo. Com total 0, aparece um aviso acima da lista, que continua visível (toda esmaecida). O erro 42501 mostra "Acesso negado…".
+- **Admin:** o menu ⋮ mostra os dois papéis diferentes do atual, todos com confirmação. "Tornar entregador" fica em destaque de perigo. O menu continua indisponível sobre si mesmo.
+- **BottomNav:** com 5 itens, o rótulo usa 11px com `tracking-tight` para caber em 360px. A ordem é Lançar · Relatório · Categorias · Equipe (ícone Wallet) · Usuários.
+
 ## Critérios de aceite
 - [ ] O admin cria `maria` como gerente; a Maria vê Equipe e não vê Usuários.
 - [ ] Equipe com João (50 × 2,50 + 20 × 5,00 = R$ 225,00) e Ana (10 × 3,00 = R$ 30,00) mostra João R$ 225,00, Ana R$ 30,00 e o total R$ 255,00.

@@ -90,16 +90,23 @@ function createFakeSupabase() {
     return profilesTable(table);
   });
 
-  const profilesTable = (table: string) => ({
-    select: () => ({
-      eq: (_column: string, value: string) => ({
-        maybeSingle: async () => {
-          if (table !== 'profiles') throw new Error(`Tabela não simulada: ${table}`);
-          return { data: profiles.get(value) ?? null, error: null };
-        },
+  /** Perfis visíveis na listagem (o gestor vê todos pela RLS da 0006). */
+  const listaPerfis = () =>
+    [...profiles.values()]
+      .filter((p): p is Profile => p !== null)
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const profilesTable = (table: string) => {
+    if (table !== 'profiles') throw new Error(`Tabela não simulada: ${table}`);
+    return {
+      select: () => ({
+        eq: (_column: string, value: string) => ({
+          maybeSingle: async () => ({ data: profiles.get(value) ?? null, error: null }),
+        }),
+        order: async () => ({ data: listaPerfis(), error: null }),
       }),
-    }),
-  });
+    };
+  };
 
   /** RPCs simuladas por feature (ver `setRpcHandler`). */
   const rpcHandlers = new Map<string, RpcHandler>();
@@ -118,6 +125,10 @@ function createFakeSupabase() {
     /** Cadastra um usuário que pode logar com `${username}@entregas.local`. */
     addAccount(username: string, password: string, profile: Profile | null) {
       accounts.set(`${username}@entregas.local`, { password, profile });
+    },
+    /** Cadastra perfis visíveis na listagem de `profiles` (seletor de entregador). */
+    addProfiles(...list: Profile[]) {
+      list.forEach((p) => profiles.set(p.id, p));
     },
     /** Simula uma sessão já persistida (reabrir o app). */
     setPersistedSession(profile: Profile) {

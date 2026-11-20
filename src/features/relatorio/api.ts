@@ -23,11 +23,23 @@ export type Resumo = {
  */
 export type FiltroCategorias = readonly string[] | null;
 
+/**
+ * Usuário do relatório enviado às RPCs (spec 008): `null` = o próprio (o
+ * parâmetro `p_usuario` é omitido); um id = esse entregador (só gestor; senão 42501).
+ */
+export type UsuarioResumo = string | null;
+
 type ResumoArgs = Functions['resumo_por_categoria']['Args'];
 
-function resumoArgs(de: string, ate: string, categorias: FiltroCategorias): ResumoArgs {
+function resumoArgs(
+  de: string,
+  ate: string,
+  categorias: FiltroCategorias,
+  usuario: UsuarioResumo,
+): ResumoArgs {
   const args: ResumoArgs = { p_de: de, p_ate: ate };
   if (categorias) args.p_categorias = [...categorias];
+  if (usuario) args.p_usuario = usuario;
   return args;
 }
 
@@ -35,10 +47,11 @@ export async function fetchResumoPorCategoria(
   de: string,
   ate: string,
   categorias: FiltroCategorias = null,
+  usuario: UsuarioResumo = null,
 ): Promise<ResumoCategoria[]> {
   const { data, error } = await supabase.rpc(
     'resumo_por_categoria',
-    resumoArgs(de, ate, categorias),
+    resumoArgs(de, ate, categorias, usuario),
   );
   if (error) throw toRelatorioError(error);
   return data ?? [];
@@ -48,24 +61,29 @@ export async function fetchResumoPorDia(
   de: string,
   ate: string,
   categorias: FiltroCategorias = null,
+  usuario: UsuarioResumo = null,
 ): Promise<ResumoDia[]> {
-  const { data, error } = await supabase.rpc('resumo_por_dia', resumoArgs(de, ate, categorias));
+  const { data, error } = await supabase.rpc(
+    'resumo_por_dia',
+    resumoArgs(de, ate, categorias, usuario),
+  );
   if (error) throw toRelatorioError(error);
   return data ?? [];
 }
 
 /**
- * Chama as duas RPCs em paralelo. Valores e total vêm prontos do banco (RLS por
- * usuário), já filtrados pelas categorias quando houver filtro.
+ * Chama as duas RPCs em paralelo. Valores e total vêm prontos do banco, já
+ * filtrados pelas categorias quando houver filtro. `usuario` (só gestor) escolhe o entregador.
  */
 export async function fetchResumo(
   de: string,
   ate: string,
   categorias: FiltroCategorias = null,
+  usuario: UsuarioResumo = null,
 ): Promise<Resumo> {
   const [porCategoria, dias] = await Promise.all([
-    fetchResumoPorCategoria(de, ate, categorias),
-    fetchResumoPorDia(de, ate, categorias),
+    fetchResumoPorCategoria(de, ate, categorias, usuario),
+    fetchResumoPorDia(de, ate, categorias, usuario),
   ]);
   return {
     categorias: porCategoria,

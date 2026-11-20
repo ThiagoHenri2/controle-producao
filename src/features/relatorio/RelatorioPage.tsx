@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, BarChart3, FilterX, Plus } from 'lucide-react';
 import { Button, EmptyState } from '@/components/ui';
+import { UsuarioAlvoSelect } from '@/features/equipe/components/UsuarioAlvoSelect';
+import { useUsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { ROUTES } from '@/routes/navigation';
 import { CategoriasFiltroButton } from './components/CategoriasFiltroButton';
 import { CategoriasSheet } from './components/CategoriasSheet';
@@ -15,16 +17,20 @@ import { FILTRO_MESSAGES, rotuloFiltro } from './filtroCategorias';
 import { useCategoriasFiltro, usePeriodoFiltro, useResumo } from './hooks';
 import { formatIntervalo } from './periodos';
 
-/** Relatório (spec 005): total do período, por categoria e por dia, com filtro de categorias. */
+/**
+ * Relatório (spec 005): total do período, por categoria e por dia, com filtro de categorias.
+ * O gestor escolhe o entregador (`?usuario=`, `p_usuario`, spec 008).
+ */
 export function RelatorioPage() {
   const navigate = useNavigate();
+  const alvo = useUsuarioAlvo();
   const { periodo, hoje, escolherRapido, escolherPersonalizado } = usePeriodoFiltro();
-  const filtro = useCategoriasFiltro();
+  const filtro = useCategoriasFiltro(alvo.alvoId);
   const { data, isPending, isError, error, refetch, isRefetching } = useResumo(
     periodo.de,
     periodo.ate,
     filtro.selecionadas,
-    { enabled: filtro.pronto },
+    { usuarioId: alvo.alvoId, pUsuario: alvo.pUsuario, enabled: filtro.pronto },
   );
   const [sheetAberto, setSheetAberto] = useState(false);
   const [filtroAberto, setFiltroAberto] = useState(false);
@@ -64,12 +70,16 @@ export function RelatorioPage() {
       <EmptyState
         icon={BarChart3}
         title="Nenhum lançamento neste período"
-        description="Lance suas entregas ou escolha outro período."
+        description={
+          alvo.isEu
+            ? 'Lance suas entregas ou escolha outro período.'
+            : `${alvo.alvoNome} não tem lançamentos neste período.`
+        }
         action={
           <Button
             fullWidth
             leftIcon={<Plus className="h-5 w-5" aria-hidden />}
-            onClick={() => navigate(ROUTES.lancar)}
+            onClick={() => navigate({ pathname: ROUTES.lancar, search: alvo.search })}
           >
             Lançar entregas
           </Button>
@@ -100,6 +110,7 @@ export function RelatorioPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <UsuarioAlvoSelect alvo={alvo} acao="vendo" rotulo="Relatório de" />
       <div className="flex flex-col gap-2">
         <PeriodoChips
           ativo={periodo.tipo}

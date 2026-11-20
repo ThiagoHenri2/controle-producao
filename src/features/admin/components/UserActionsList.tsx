@@ -1,35 +1,59 @@
 import type { LucideIcon } from 'lucide-react';
-import { KeyRound, ShieldCheck, ShieldOff, UserCheck, UserX } from 'lucide-react';
+import { Bike, KeyRound, ShieldCheck, UserCheck, UserX, Wallet } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import type { ProfileRole } from '@/lib/database.types';
 import type { AdminUser } from '../api';
 
-export type UserAction = 'reset_password' | 'toggle_active' | 'toggle_role';
+export type UserAction =
+  { type: 'reset_password' } | { type: 'toggle_active' } | { type: 'set_role'; role: ProfileRole };
 
 type UserActionsListProps = {
   user: AdminUser;
   onSelect: (action: UserAction) => void;
 };
 
-type Item = { action: UserAction; label: string; icon: LucideIcon; danger?: boolean };
+type Item = { key: string; action: UserAction; label: string; icon: LucideIcon; danger?: boolean };
+
+/** Papéis que o usuário pode receber (todos menos o atual), na ordem gerente · admin · entregador. */
+const ROLE_ITEMS: ReadonlyArray<{ role: ProfileRole; label: string; icon: LucideIcon }> = [
+  { role: 'gerente', label: 'Tornar gerente', icon: Wallet },
+  { role: 'admin', label: 'Tornar admin', icon: ShieldCheck },
+  { role: 'user', label: 'Tornar entregador', icon: Bike },
+];
 
 function itemsFor(user: AdminUser): Item[] {
-  return [
-    { action: 'reset_password', label: 'Redefinir senha', icon: KeyRound },
+  const items: Item[] = [
+    { key: 'reset', action: { type: 'reset_password' }, label: 'Redefinir senha', icon: KeyRound },
     user.ativo
-      ? { action: 'toggle_active', label: 'Desativar', icon: UserX, danger: true }
-      : { action: 'toggle_active', label: 'Reativar', icon: UserCheck },
-    user.role === 'admin'
-      ? { action: 'toggle_role', label: 'Tornar usuário comum', icon: ShieldOff, danger: true }
-      : { action: 'toggle_role', label: 'Tornar admin', icon: ShieldCheck },
+      ? {
+          key: 'active',
+          action: { type: 'toggle_active' },
+          label: 'Desativar',
+          icon: UserX,
+          danger: true,
+        }
+      : { key: 'active', action: { type: 'toggle_active' }, label: 'Reativar', icon: UserCheck },
   ];
+  for (const { role, label, icon } of ROLE_ITEMS) {
+    if (role === user.role) continue;
+    items.push({
+      key: `role-${role}`,
+      action: { type: 'set_role', role },
+      label,
+      icon,
+      // Rebaixar a entregador tira poderes: destaque de perigo.
+      danger: role === 'user',
+    });
+  }
+  return items;
 }
 
 /** Lista de ações do menu ⋮ (renderizada dentro de um AdminSheet). */
 export function UserActionsList({ user, onSelect }: UserActionsListProps) {
   return (
     <ul className="-mx-2 flex flex-col">
-      {itemsFor(user).map(({ action, label, icon: Icon, danger }) => (
-        <li key={action}>
+      {itemsFor(user).map(({ key, action, label, icon: Icon, danger }) => (
+        <li key={key}>
           <button
             type="button"
             onClick={() => onSelect(action)}
