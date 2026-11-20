@@ -78,7 +78,16 @@ function createFakeSupabase() {
     }),
   };
 
-  const from = vi.fn((table: string) => ({
+  /** Tabelas extras simuladas por feature (ver `setTableHandler`). */
+  const tableHandlers = new Map<string, () => unknown>();
+
+  const from = vi.fn((table: string) => {
+    const handler = tableHandlers.get(table);
+    if (handler) return handler();
+    return profilesTable(table);
+  });
+
+  const profilesTable = (table: string) => ({
     select: () => ({
       eq: (_column: string, value: string) => ({
         maybeSingle: async () => {
@@ -87,7 +96,7 @@ function createFakeSupabase() {
         },
       }),
     }),
-  }));
+  });
 
   return {
     client: { auth, from },
@@ -108,6 +117,14 @@ function createFakeSupabase() {
     resolveInitial() {
       pendingInitial.splice(0).forEach((l) => l('INITIAL_SESSION', session));
     },
+    /**
+     * Simula outra tabela: `from(table)` passa a retornar `handler()`.
+     * Ex.: `fakeSupabase.setTableHandler('categorias', fakeTable.handler)`.
+     * O `reset()` remove os handlers registrados.
+     */
+    setTableHandler(table: string, handler: () => unknown) {
+      tableHandlers.set(table, handler);
+    },
     /** Segura o signIn até chamar a função retornada. */
     holdSignIn(): () => void {
       let release = () => {};
@@ -127,6 +144,7 @@ function createFakeSupabase() {
       holdInitial = false;
       pendingInitial.length = 0;
       signInGate = null;
+      tableHandlers.clear();
       vi.clearAllMocks();
     },
   };

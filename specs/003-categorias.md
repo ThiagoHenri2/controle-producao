@@ -56,10 +56,16 @@ Bottom sheet "Nova / Editar categoria":
 ```
 
 ## Critérios de aceite
-- [ ] Criar "Sanduíche 2,50" e "Pizza 5,00"; ambas aparecem na lista formatadas em BRL.
-- [ ] Nome duplicado mostra a mensagem amigável, sem erro técnico.
-- [ ] Valor "-1" ou "abc" é bloqueado no formulário.
-- [ ] Editar o valor não altera os lançamentos anteriores (verificado pelo relatório).
-- [ ] Uma categoria inativa não aparece em Lançar, mas aparece no relatório de períodos em que teve lançamentos.
-- [ ] Excluir uma categoria sem lançamentos funciona; com lançamentos, oferece desativar.
-- [ ] O estado vazio mostra "Cadastre sua primeira categoria" com um botão.
+- [x] Criar "Sanduíche 2,50" e "Pizza 5,00"; ambas aparecem na lista formatadas em BRL.
+- [x] Nome duplicado mostra a mensagem amigável, sem erro técnico.
+- [x] Valor "-1" ou "abc" é bloqueado no formulário.
+- [ ] Editar o valor não altera os lançamentos anteriores (verificado pelo relatório). _Pendente: depende das specs 004/005; no banco é garantido pelo snapshot de preço (`lancamentos_preco_snapshot`, spec 002)._
+- [ ] Uma categoria inativa não aparece em Lançar, mas aparece no relatório de períodos em que teve lançamentos. _Pendente: depende das specs 004/005; a tela Lançar deve usar `useCategorias({ incluirInativas: false })`._
+- [x] Excluir uma categoria sem lançamentos funciona; com lançamentos, oferece desativar.
+- [x] O estado vazio mostra "Cadastre sua primeira categoria" com um botão.
+
+## Notas de implementação
+- **Unicidade sem diferenciar maiúsculas:** o banco só tem `unique(user_id, nome)`, que diferencia maiúsculas. O front checa contra a lista carregada (ativas e inativas) com `trim` + `toLocaleLowerCase('pt-BR')` e espaços internos colapsados (`nomeDuplicado` em `schema.ts`); o erro `23505` continua tratado como rede de segurança. Duas abas/aparelhos ainda podem criar "Pizza" e "pizza" ao mesmo tempo; se isso importar, o `db-supabase` pode trocar a constraint por um índice único em `(user_id, lower(trim(nome)))`.
+- **Aviso de reajuste:** aparece no sheet de edição assim que o valor digitado difere do valor atual.
+- **Excluir categoria inativa com lançamentos:** como ela já está desativada, não há o que oferecer; o front mostra só um toast ("…não pode ser excluída. Ela continua desativada.").
+- **Valor:** aceita "2,50", "2.50", "2,5", "2" e "R$ 2,50"; rejeita negativo, letras, separador de milhar ("1.234,50") e mais de 2 casas. A conversão é feita em centavos inteiros (sem float).

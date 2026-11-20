@@ -10,3 +10,5 @@ export { Spinner } from './Spinner';
 export { ToastProvider } from './Toast';
 export { useToast, type ToastApi, type ToastInput, type ToastType } from './toast-context';
 export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
+export { BottomSheet, type BottomSheetProps } from './BottomSheet';
+export { Switch, type SwitchProps } from './Switch';
