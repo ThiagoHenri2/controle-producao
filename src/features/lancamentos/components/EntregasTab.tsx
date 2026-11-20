@@ -1,26 +1,25 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Plus, Tags } from 'lucide-react';
 import { Button, EmptyState, SkeletonList } from '@/components/ui';
 import { useCategorias } from '@/features/categorias/hooks';
-import { UsuarioAlvoSelect } from '@/features/equipe/components/UsuarioAlvoSelect';
-import { useUsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
+import type { UsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { ROUTES } from '@/routes/navigation';
-import { hojeISO } from '@/lib/format';
-import { DateSelector } from './components/DateSelector';
-import { LancamentosDoDia } from './components/LancamentosDoDia';
-import { NovoLancamentoForm } from './components/NovoLancamentoForm';
-import { useDataLancamento } from './useDataLancamento';
+import { LancamentosDoDia } from './LancamentosDoDia';
+import { NovoLancamentoForm } from './NovoLancamentoForm';
+
+type EntregasTabProps = {
+  alvo: UsuarioAlvo;
+  data: string;
+  hoje: string;
+  onSavingChange: (saving: boolean) => void;
+};
 
 /**
- * Tela Lançar (spec 004): data, steppers por categoria ativa e o que já foi lançado no dia.
+ * Lançar › Entregas (spec 004): steppers por categoria ativa e o que já foi lançado no dia.
  * O gestor pode lançar para outro entregador (spec 008): categorias, preços e lista são do alvo.
  */
-export function LancamentosPage() {
-  const [data, setData] = useDataLancamento();
-  const [saving, setSaving] = useState(false);
-  const hoje = hojeISO();
-  const alvo = useUsuarioAlvo();
+export function EntregasTab({ alvo, data, hoje, onSavingChange }: EntregasTabProps) {
   const categorias = useCategorias(alvo.alvoId, { incluirInativas: false });
 
   let corpo: ReactNode;
@@ -73,7 +72,7 @@ export function LancamentosPage() {
         userId={alvo.alvoId}
         data={data}
         hoje={hoje}
-        onSavingChange={setSaving}
+        onSavingChange={onSavingChange}
       />
     );
   }
@@ -82,8 +81,6 @@ export function LancamentosPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <UsuarioAlvoSelect alvo={alvo} acao="lançando" />
-      <DateSelector value={data} hoje={hoje} onChange={setData} disabled={saving} />
       {corpo}
       <LancamentosDoDia userId={alvo.alvoId} data={data} />
       {/* Espaço para a barra fixa "Subtotal · Salvar" não cobrir o fim da lista. */}

@@ -32,10 +32,31 @@ export async function fetchResumoEquipe(
     ? await supabase.rpc('resumo_por_usuario_nomes', { p_de: de, p_ate: ate, p_nomes: [...nomes] })
     : await supabase.rpc('resumo_por_usuario', { p_de: de, p_ate: ate });
   if (error) throw toRelatorioError(error);
-  const usuarios = data ?? [];
+  return montarResumoEquipe(data ?? []);
+}
+
+function montarResumoEquipe(usuarios: ResumoUsuario[]): ResumoEquipe {
   return {
     usuarios,
     totalGeral: Number(usuarios[0]?.total_geral ?? 0),
     quantidadeTotal: usuarios.reduce((soma, u) => soma + Number(u.quantidade), 0),
   };
+}
+
+/**
+ * Despesas de cada entregador no período (spec 009, só gestor; senão 42501).
+ * `quantidade` = nº de despesas. `nomes`: `null` = todas as categorias de despesa
+ * (`p_nomes` omitido); um array de nomes normalizados = só essas; `[]` = nenhuma.
+ */
+export async function fetchResumoEquipeDespesas(
+  de: string,
+  ate: string,
+  nomes: FiltroCategorias = null,
+): Promise<ResumoEquipe> {
+  const { data, error } = await supabase.rpc(
+    'resumo_despesas_por_usuario_nomes',
+    nomes ? { p_de: de, p_ate: ate, p_nomes: [...nomes] } : { p_de: de, p_ate: ate },
+  );
+  if (error) throw toRelatorioError(error);
+  return montarResumoEquipe(data ?? []);
 }

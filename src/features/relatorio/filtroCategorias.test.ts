@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   catsFromSearchParams,
   catsQueryKey,
+  pedeNenhuma,
   resolverSelecao,
   rotuloFiltro,
+  textoBotaoFiltro,
   toSearchString,
   withCats,
 } from './filtroCategorias';
@@ -64,5 +66,31 @@ describe('filtro de categorias', () => {
     expect(rotuloFiltro(null, CATS)).toBe('Todas');
     expect(rotuloFiltro(['b'], CATS)).toBe('Pizza');
     expect(rotuloFiltro(['a', 'b'], CATS)).toBe('2 de 3');
+  });
+
+  it('dcats e "nenhuma" (spec 009): [] grava nenhuma; texto do botão com duas seções', () => {
+    const base = new URLSearchParams('tipo=ambos');
+    expect(toSearchString(withCats(base, [], IDS, 'dcats'))).toBe('?tipo=ambos&dcats=nenhuma');
+    expect(toSearchString(withCats(base, ['b'], IDS, 'dcats'))).toBe('?tipo=ambos&dcats=b');
+    expect(pedeNenhuma(new URLSearchParams('dcats=nenhuma'), 'dcats')).toBe(true);
+    expect(catsFromSearchParams(new URLSearchParams('dcats=x,y'), 'dcats')).toEqual(['x', 'y']);
+    expect(catsQueryKey([])).toBe('nenhuma');
+    expect(rotuloFiltro([], CATS)).toBe('Nenhuma');
+    const comb = [{ id: 'd', nome: 'Combustível' }];
+    expect(textoBotaoFiltro([{ titulo: 'Entregas', selecionadas: ['b'], categorias: CATS }])).toBe(
+      'Categorias: Pizza',
+    );
+    expect(
+      textoBotaoFiltro([
+        { titulo: 'Entregas', selecionadas: null, categorias: CATS },
+        { titulo: 'Despesas', selecionadas: null, categorias: comb },
+      ]),
+    ).toBe('Categorias: Todas');
+    expect(
+      textoBotaoFiltro([
+        { titulo: 'Entregas', selecionadas: ['b'], categorias: CATS },
+        { titulo: 'Despesas', selecionadas: [], categorias: comb },
+      ]),
+    ).toBe('Entregas: Pizza · Despesas: Nenhuma');
   });
 });

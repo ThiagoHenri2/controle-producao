@@ -11,6 +11,11 @@ export function formatEntregas(n: number): string {
   return `${formatInteiro(n)} ${n === 1 ? 'entrega' : 'entregas'}`;
 }
 
+/** "1 lançamento" / "3 lançamentos" (despesas). */
+export function formatLancamentos(n: number): string {
+  return `${formatInteiro(n)} ${n === 1 ? 'lançamento' : 'lançamentos'}`;
+}
+
 /**
  * Percentual inteiro (0–100) de `valor` sobre `total`, usado só na largura das
  * barras. Não é exibido como valor monetário.

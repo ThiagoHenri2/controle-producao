@@ -3,10 +3,16 @@ import { formatBRL, rotuloData } from '@/lib/format';
 import type { ResumoDia } from '../api';
 import { formatInteiro } from '../format';
 
-type ResumoDiasProps = { dias: ResumoDia[] };
+type ResumoDiasProps = {
+  dias: ResumoDia[];
+  /** Texto da quantidade. Padrão: "70 un" (entregas). */
+  unidade?: (quantidade: number) => string;
+};
+
+const unidadePadrao = (n: number) => `${formatInteiro(n)} un`;
 
 /** Lista por dia ("Hoje", "Ontem", "dd/MM"), para conferir com o que recebeu. */
-export function ResumoDias({ dias }: ResumoDiasProps) {
+export function ResumoDias({ dias, unidade = unidadePadrao }: ResumoDiasProps) {
   const titleId = useId();
   const agora = new Date();
   return (
@@ -24,7 +30,7 @@ export function ResumoDias({ dias }: ResumoDiasProps) {
               {rotuloData(d.data, agora)}
             </time>
             <span className="shrink-0 text-sm tabular-nums text-slate-600">
-              {formatInteiro(d.quantidade)} un
+              {unidade(Number(d.quantidade))}
             </span>
             <span className="w-28 shrink-0 text-right font-semibold tabular-nums text-slate-900">
               {formatBRL(d.valor)}

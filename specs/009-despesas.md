@@ -98,3 +98,15 @@ index (user_id, data), index (categoria_despesa_id), index (criado_por)
 - [ ] O entregador não vê as despesas de outros.
 - [ ] Equipe em "Ambos": João receitas R$ 225,00, despesas R$ 35,90, saldo R$ 189,10; o total de todos é coerente.
 - [ ] As abas e o tipo ficam na URL e sobrevivem ao reload.
+
+## Desvios da implementação (front, T009.3–T009.8)
+- **Abas:** o `Tabs` (`src/components/ui/Tabs.tsx`) fica no topo, acima do seletor "Lançando para"/"Categorias de". A data da tela Lançar é estado local, compartilhado pelas duas abas, então trocar de aba mantém a data (e `?usuario`). A aba padrão (`entregas`) não aparece na URL.
+- **Categoria no formulário de despesa:** chips (rádios nativos em `role=radiogroup`). Com uma categoria só, ela já vem marcada; depois de salvar, a categoria continua marcada e Valor/Descrição são limpos. No BottomSheet de edição, a categoria é um `Select` (ativas + a atual, mesmo inativa).
+- **Título da lista:** "Despesas de hoje" / "Despesas de ontem" / "Despesas em dd/MM/yyyy", no mesmo padrão de "Já lançado …".
+- **Erros:** as despesas reutilizam a classe `LancamentoError` (mesmos `kind`s), com mensagens próprias (`despesas/errors.ts`). `toLancamentoError` passou a reconhecer `*_data_nao_futura`, "Categoria de despesa inativa" e 23502.
+- **Categorias:** `CategoriaFormSheet` e `CategoriaItem` recebem `tipo` (`entregas` | `despesas`); em despesas não há o campo nem a coluna de valor. Os hooks de mutation de categorias recebem o mesmo `tipo`. A lista virou `CategoriasLista`.
+- **Filtro "nenhuma":** em Ambos, a checklist tem duas seções e exige ao menos uma categoria marcada **no total** (com uma seção só, continua exigindo uma na seção). Uma seção toda desmarcada grava `cats=nenhuma`/`dcats=nenhuma` (Relatório) ou `nomes=`/`dnomes=` vazio (Equipe) e envia `p_categorias`/`p_nomes = '{}'` (contrato da 0007: `'{}'` = nada). Isso permite "desmarcar Combustível" mesmo quando ela é a única categoria de despesa.
+- **Texto do botão de filtro:** com uma seção, "Categorias: Todas | <nome> | N de M"; com duas e sem filtro, "Categorias: Todas"; com filtro, "Entregas: … · Despesas: …". O aviso "Filtrando X de Y categorias" do card soma as duas seções.
+- **Trocar o entregador alvo** limpa `cats` e `dcats` e preserva `tipo`, `aba` e o período.
+- **Equipe:** em Receitas e Despesas a ordem é a da RPC (valor desc, nome); em Ambos, saldo desc, nome. Em todos, quem não tem nada no tipo vai para o fim, esmaecido. Em Ambos a linha mostra o saldo (vermelho se negativo) e "+receitas · −despesas", sem barra de %. O link para o relatório leva `periodo`, `usuario` e `tipo` (este último só quando não é Receitas).
+- **Relatório › Despesas:** "Por categoria" e "Por dia" usam "N lançamento(s)" no lugar de "un"; barras em vermelho.

@@ -9,7 +9,9 @@
  *     `auth.uid()` (o front nunca envia o autor);
  *   - `lancamentos.Insert.valor_unitario` é opcional (o trigger
  *     `lancamentos_preco_snapshot` copia o preço da categoria);
- *   - `lancamentos.valor_total` (coluna gerada) não aparece em Insert/Update.
+ *   - `lancamentos.valor_total` (coluna gerada) não aparece em Insert/Update;
+ *   - `despesas.Insert`/`Update` não têm `criado_por` (trigger anti-forja da 0007)
+ *     nem `updated_at` (a tabela não tem essa coluna).
  *
  * Para regenerar via CLI no futuro (depois de `npx supabase login`):
  *   npx supabase gen types typescript --project-id <ref-do-projeto> --schema public > src/lib/database.types.ts
@@ -69,6 +71,75 @@ export type Database = {
           valor_unitario?: number;
         };
         Relationships: [];
+      };
+      categorias_despesa: {
+        // Migration 0007 (spec 009): categoria de despesa, sem valor fixo.
+        Row: {
+          ativa: boolean;
+          created_at: string;
+          id: string;
+          nome: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          ativa?: boolean;
+          created_at?: string;
+          id?: string;
+          nome: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          ativa?: boolean;
+          created_at?: string;
+          id?: string;
+          nome?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      despesas: {
+        // Migration 0007 (spec 009): valor livre por lançamento.
+        Row: {
+          categoria_despesa_id: string;
+          created_at: string;
+          /** Autor da despesa. `null` se o autor foi apagado. */
+          criado_por: string | null;
+          data: string;
+          descricao: string | null;
+          id: string;
+          user_id: string;
+          valor: number;
+        };
+        Insert: {
+          categoria_despesa_id: string;
+          created_at?: string;
+          data: string;
+          descricao?: string | null;
+          id?: string;
+          user_id?: string;
+          valor: number;
+        };
+        Update: {
+          categoria_despesa_id?: string;
+          created_at?: string;
+          data?: string;
+          descricao?: string | null;
+          id?: string;
+          user_id?: string;
+          valor?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'despesas_categoria_despesa_id_fkey';
+            columns: ['categoria_despesa_id'];
+            isOneToOne: false;
+            referencedRelation: 'categorias_despesa';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       lancamentos: {
         Row: {
@@ -157,6 +228,32 @@ export type Database = {
       // `p_categorias` omitido/null = todas as categorias.
       // `p_usuario` (0006) omitido/null = o próprio usuário; outro id exige gestor (42501).
       // `bigint`/`numeric` → number; `date`/`uuid` → string.
+      // Migration 0007 (spec 009). `p_categorias`: omitido = todas; [] = nenhuma.
+      resumo_despesas_por_categoria: {
+        Args: { p_ate: string; p_categorias?: string[]; p_de: string; p_usuario?: string };
+        Returns: {
+          ativa: boolean;
+          categoria_id: string;
+          nome: string;
+          /** Nº de despesas. */
+          quantidade: number;
+          total_geral: number;
+          valor: number;
+        }[];
+      };
+      resumo_despesas_por_dia: {
+        Args: { p_ate: string; p_categorias?: string[]; p_de: string; p_usuario?: string };
+        Returns: {
+          data: string;
+          quantidade: number;
+          valor: number;
+        }[];
+      };
+      /** Só gestor (42501). `quantidade` = nº de despesas. */
+      resumo_despesas_por_usuario_nomes: {
+        Args: { p_ate: string; p_de: string; p_nomes?: string[] };
+        Returns: ResumoUsuarioRow[];
+      };
       resumo_por_categoria: {
         Args: { p_ate: string; p_categorias?: string[]; p_de: string; p_usuario?: string };
         Returns: {

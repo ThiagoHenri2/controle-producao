@@ -43,3 +43,11 @@ export function tituloJaLancado(yyyyMMdd: string, agora: Date = new Date()): str
   if (diff === 1) return 'Já lançado ontem';
   return `Já lançado em ${formatData(yyyyMMdd)}`;
 }
+
+/** Título da lista de despesas: "Despesas de hoje", "Despesas de ontem" ou "Despesas em 18/11/2026". */
+export function tituloDespesasDoDia(yyyyMMdd: string, agora: Date = new Date()): string {
+  const diff = differenceInCalendarDays(agora, parseISODate(yyyyMMdd));
+  if (diff === 0) return 'Despesas de hoje';
+  if (diff === 1) return 'Despesas de ontem';
+  return `Despesas em ${formatData(yyyyMMdd)}`;
+}

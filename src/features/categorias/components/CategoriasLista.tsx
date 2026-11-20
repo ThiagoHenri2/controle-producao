@@ -1,32 +1,60 @@
 import { useState } from 'react';
 import { AlertCircle, ChevronDown, Plus, Tags } from 'lucide-react';
 import { Button, EmptyState, SkeletonList } from '@/components/ui';
-import { UsuarioAlvoSelect } from '@/features/equipe/components/UsuarioAlvoSelect';
-import { useUsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
+import type { UsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { cn } from '@/lib/cn';
-import type { Categoria } from './api';
-import { CategoriaFormSheet } from './components/CategoriaFormSheet';
-import { CategoriaItem } from './components/CategoriaItem';
-import { CATEGORIA_ERROR_MESSAGES } from './errors';
-import { useCategorias } from './hooks';
+import { CATEGORIA_ERROR_MESSAGES } from '../errors';
+import { useCategoriasDoTipo, type CategoriaLista, type TipoCategoria } from '../hooks';
+import { CategoriaFormSheet } from './CategoriaFormSheet';
+import { CategoriaItem } from './CategoriaItem';
 
-type SheetState = { open: false } | { open: true; categoria: Categoria | null };
+type SheetState = { open: false } | { open: true; categoria: CategoriaLista | null };
 
-/** Categorias (spec 003). O gestor gerencia as de qualquer entregador (spec 008). */
-export function CategoriasPage() {
-  const alvo = useUsuarioAlvo();
-  const { data, isPending, isError, refetch, isRefetching } = useCategorias(alvo.alvoId, {
-    incluirInativas: true,
-  });
+const TEXTOS = {
+  entregas: {
+    vazioEu: 'Cadastre sua primeira categoria',
+    vazioOutro: (nome: string) => `Cadastre a primeira categoria de ${nome}`,
+    vazioDescricao:
+      'Ex.: Sanduíche a R$ 2,50 ou Pizza a R$ 5,00. Depois é só lançar as entregas do dia.',
+    ativas: 'Categorias ativas',
+    inativas: 'Categorias inativas',
+  },
+  despesas: {
+    vazioEu: 'Cadastre sua primeira categoria de despesa',
+    vazioOutro: (nome: string) => `Cadastre a primeira categoria de despesa de ${nome}`,
+    vazioDescricao:
+      'Ex.: Combustível ou Manutenção. O valor você informa em cada despesa, na tela Lançar.',
+    ativas: 'Categorias de despesa ativas',
+    inativas: 'Categorias de despesa inativas',
+  },
+} as const;
+
+type CategoriasListaProps = {
+  /** `entregas` (spec 003) ou `despesas` (spec 009, sem valor). */
+  tipo: TipoCategoria;
+  /** Dono das categorias: o próprio usuário ou o entregador alvo do gestor (spec 008). */
+  alvo: UsuarioAlvo;
+};
+
+/** Lista de categorias do tipo (ativas, inativas recolhidas) com "Nova categoria" fixo. */
+export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
+  const textos = TEXTOS[tipo];
+  const { data, isPending, isError, refetch, isRefetching } = useCategoriasDoTipo(
+    tipo,
+    alvo.alvoId,
+    { incluirInativas: true },
+  );
   const [sheet, setSheet] = useState<SheetState>({ open: false });
   const [mostrarInativas, setMostrarInativas] = useState(false);
 
   const novaCategoria = () => setSheet({ open: true, categoria: null });
-  const editar = (categoria: Categoria) => setSheet({ open: true, categoria });
+  const editar = (categoria: CategoriaLista) => setSheet({ open: true, categoria });
+  const inativasId = `categorias-inativas-${tipo}`;
 
   const sheetEl = sheet.open && (
     <CategoriaFormSheet
       key={sheet.categoria?.id ?? 'nova'}
+      tipo={tipo}
       categoria={sheet.categoria}
       userId={alvo.alvoId}
       existentes={data ?? []}
@@ -34,21 +62,13 @@ export function CategoriasPage() {
     />
   );
 
-  const seletor = <UsuarioAlvoSelect alvo={alvo} acao="vendo" rotulo="Categorias de" />;
-
   if (isPending) {
-    return (
-      <div className="flex flex-col gap-4">
-        {seletor}
-        <SkeletonList rows={4} label="Carregando categorias…" />
-      </div>
-    );
+    return <SkeletonList rows={4} label="Carregando categorias…" />;
   }
 
   if (isError) {
     return (
       <div className="flex flex-col gap-4">
-        {seletor}
         <EmptyState
           icon={AlertCircle}
           title={CATEGORIA_ERROR_MESSAGES.carregar}
@@ -66,15 +86,10 @@ export function CategoriasPage() {
   if (data.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        {seletor}
         <EmptyState
           icon={Tags}
-          title={
-            alvo.isEu
-              ? 'Cadastre sua primeira categoria'
-              : `Cadastre a primeira categoria de ${alvo.alvoNome}`
-          }
-          description="Ex.: Sanduíche a R$ 2,50 ou Pizza a R$ 5,00. Depois é só lançar as entregas do dia."
+          title={alvo.isEu ? textos.vazioEu : textos.vazioOutro(alvo.alvoNome)}
+          description={textos.vazioDescricao}
           action={
             <Button
               fullWidth
@@ -95,9 +110,8 @@ export function CategoriasPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {seletor}
       {ativas.length > 0 ? (
-        <ul aria-label="Categorias ativas" className="flex flex-col gap-2">
+        <ul aria-label={textos.ativas} className="flex flex-col gap-2">
           {ativas.map((c) => (
             <CategoriaItem key={c.id} categoria={c} onEdit={editar} />
           ))}
@@ -113,7 +127,7 @@ export function CategoriasPage() {
           <button
             type="button"
             aria-expanded={mostrarInativas}
-            aria-controls="categorias-inativas"
+            aria-controls={inativasId}
             onClick={() => setMostrarInativas((v) => !v)}
             className="flex min-h-touch items-center gap-2 rounded-lg px-1 text-sm font-semibold text-slate-700 hover:bg-slate-100"
           >
@@ -126,11 +140,7 @@ export function CategoriasPage() {
             <span className="h-px flex-1 bg-slate-300" aria-hidden />
           </button>
           {mostrarInativas && (
-            <ul
-              id="categorias-inativas"
-              aria-label="Categorias inativas"
-              className="flex flex-col gap-2"
-            >
+            <ul id={inativasId} aria-label={textos.inativas} className="flex flex-col gap-2">
               {inativas.map((c) => (
                 <CategoriaItem key={c.id} categoria={c} onEdit={editar} />
               ))}

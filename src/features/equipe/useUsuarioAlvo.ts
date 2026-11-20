@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
-import { CATS_PARAM, toSearchString } from '@/features/relatorio/filtroCategorias';
+import { CATS_PARAM, DCATS_PARAM, toSearchString } from '@/features/relatorio/filtroCategorias';
 import type { Perfil } from './api';
 import { usePerfis } from './hooks';
 
@@ -23,7 +23,7 @@ export type UsuarioAlvo = {
   pUsuario: string | null;
   /** Perfis que o gestor pode escolher (vazio para entregador). */
   perfis: ReturnType<typeof usePerfis>;
-  /** Troca o alvo na URL (replace). Limpa `cats`, que são IDs de outro usuário. */
+  /** Troca o alvo na URL (replace). Limpa `cats` e `dcats`, que são IDs de outro usuário. */
   setAlvo: (id: string) => void;
   /** Query string `?usuario=<id>` para levar o alvo a outra tela ('' quando é o próprio). */
   search: string;
@@ -57,6 +57,7 @@ export function useUsuarioAlvo(): UsuarioAlvo {
       if (!id || id === euId) next.delete(USUARIO_PARAM);
       else next.set(USUARIO_PARAM, id);
       next.delete(CATS_PARAM);
+      next.delete(DCATS_PARAM);
       navigate({ search: toSearchString(next) }, { replace: true });
     },
     [searchParams, euId, navigate],

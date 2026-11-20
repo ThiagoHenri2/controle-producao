@@ -5,7 +5,7 @@ import { formatBRL, fromCentavos } from '@/lib/format';
 import { diaMes } from '../dates';
 import { useCreateLancamentos } from '../hooks';
 import { montarItens, subtotalCentavos, totalCentavos, type Quantidades } from '../schema';
-import { useKeyboardInset } from '../useKeyboardInset';
+import { BarraAcaoFixa } from './BarraAcaoFixa';
 
 type NovoLancamentoFormProps = {
   /** Só categorias ativas. */
@@ -30,7 +30,6 @@ export function NovoLancamentoForm({
   const formId = useId();
   const toast = useToast();
   const createMutation = useCreateLancamentos();
-  const keyboardInset = useKeyboardInset();
   const [quantidades, setQuantidades] = useState<Quantidades>({});
 
   const subtotal = subtotalCentavos(categorias, quantidades);
@@ -98,34 +97,25 @@ export function NovoLancamentoForm({
         })}
       </ul>
 
-      {/* A página reserva o espaço desta barra no fim do conteúdo. */}
-      <div
-        className="fixed inset-x-0 z-20 border-t border-slate-200 bg-surface/95 px-4 py-2 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur"
-        style={{
-          bottom:
-            keyboardInset > 0 ? `${keyboardInset}px` : 'calc(4rem + env(safe-area-inset-bottom))',
-        }}
-      >
-        <div className="mx-auto flex max-w-md items-center gap-3">
-          <div className="min-w-0 shrink-0" aria-live="polite" aria-atomic="true">
-            <p className="text-xs font-medium text-slate-600">Subtotal</p>
-            <p className="text-lg font-bold tabular-nums text-slate-900" data-testid="subtotal">
-              {formatBRL(fromCentavos(subtotal))}
-            </p>
-          </div>
-          <Button
-            type="submit"
-            form={formId}
-            size="lg"
-            fullWidth
-            className="flex-1"
-            loading={saving}
-            disabled={!temQuantidade}
-          >
-            Salvar
-          </Button>
+      <BarraAcaoFixa>
+        <div className="min-w-0 shrink-0" aria-live="polite" aria-atomic="true">
+          <p className="text-xs font-medium text-slate-600">Subtotal</p>
+          <p className="text-lg font-bold tabular-nums text-slate-900" data-testid="subtotal">
+            {formatBRL(fromCentavos(subtotal))}
+          </p>
         </div>
-      </div>
+        <Button
+          type="submit"
+          form={formId}
+          size="lg"
+          fullWidth
+          className="flex-1"
+          loading={saving}
+          disabled={!temQuantidade}
+        >
+          Salvar
+        </Button>
+      </BarraAcaoFixa>
     </form>
   );
 }

@@ -1,11 +1,18 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Info, Trash2 } from 'lucide-react';
 import { BottomSheet, Button, ConfirmDialog, Input, Switch, useToast } from '@/components/ui';
-import type { Categoria } from '../api';
 import { CATEGORIA_ERROR_MESSAGES, type CategoriaError } from '../errors';
-import { useCreateCategoria, useDeleteCategoria, useUpdateCategoria } from '../hooks';
+import {
+  useCreateCategoria,
+  useDeleteCategoria,
+  useUpdateCategoria,
+  type CategoriaLista,
+  type CategoriaListaPatch,
+  type TipoCategoria,
+} from '../hooks';
 import {
   NOME_MAX,
+  validarCategoriaDespesaForm,
   validarCategoriaForm,
   valorParaInput,
   type CategoriaFormErrors,
@@ -14,12 +21,17 @@ import {
 export const AVISO_REAJUSTE = 'O novo valor vale para os próximos lançamentos.';
 
 type CategoriaFormSheetProps = {
+  /**
+   * `entregas` (padrão): nome + valor por entrega + ativa.
+   * `despesas` (spec 009): só nome + ativa, sem o campo valor.
+   */
+  tipo?: TipoCategoria;
   /** `null` = nova categoria. */
-  categoria: Categoria | null;
+  categoria: CategoriaLista | null;
   /** Dono da categoria nova (o próprio usuário ou o entregador alvo do gestor). */
   userId: string;
   /** Lista completa (ativas e inativas) do dono, para checar nome duplicado. */
-  existentes: ReadonlyArray<Pick<Categoria, 'id' | 'nome'>>;
+  existentes: ReadonlyArray<Pick<CategoriaLista, 'id' | 'nome'>>;
   onClose: () => void;
 };
 
@@ -27,6 +39,7 @@ type DeleteStep = 'none' | 'confirm' | 'em_uso';
 
 /** Bottom sheet de criar/editar categoria, com excluir (e "Desativar" quando há lançamentos). */
 export function CategoriaFormSheet({
+  tipo = 'entregas',
   categoria,
   userId,
   existentes,
@@ -34,12 +47,16 @@ export function CategoriaFormSheet({
 }: CategoriaFormSheetProps) {
   const formId = useId();
   const toast = useToast();
-  const createMutation = useCreateCategoria();
-  const updateMutation = useUpdateCategoria();
-  const deleteMutation = useDeleteCategoria();
+  const createMutation = useCreateCategoria(tipo);
+  const updateMutation = useUpdateCategoria(tipo);
+  const deleteMutation = useDeleteCategoria(tipo);
 
+  const comValor = tipo === 'entregas';
   const editando = categoria !== null;
-  const valorInicial = editando ? valorParaInput(categoria.valor_unitario) : '';
+  const valorInicial =
+    editando && categoria.valor_unitario !== undefined
+      ? valorParaInput(categoria.valor_unitario)
+      : '';
   const [nome, setNome] = useState(categoria?.nome ?? '');
   const [valor, setValor] = useState(valorInicial);
   const [ativa, setAtiva] = useState(categoria?.ativa ?? true);
@@ -53,12 +70,15 @@ export function CategoriaFormSheet({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    const result = validarCategoriaForm({ nome, valor, ativa }, existentes, categoria?.id);
+    const result = comValor
+      ? validarCategoriaForm({ nome, valor, ativa }, existentes, categoria?.id)
+      : validarCategoriaDespesaForm({ nome, ativa }, existentes, categoria?.id);
     if (!result.ok) {
       setErrors(result.errors);
       return;
     }
     setErrors({});
+    const payload: CategoriaListaPatch = result.payload;
 
     const onError = (err: CategoriaError) => {
       if (err.kind === 'duplicado') setErrors({ nome: err.message });
@@ -67,7 +87,7 @@ export function CategoriaFormSheet({
 
     if (editando) {
       updateMutation.mutate(
-        { id: categoria.id, userId: categoria.user_id, patch: result.payload },
+        { id: categoria.id, userId: categoria.user_id, patch: payload },
         {
           onSuccess: () => {
             toast.success('Categoria salva.');
@@ -78,7 +98,7 @@ export function CategoriaFormSheet({
       );
     } else {
       createMutation.mutate(
-        { ...result.payload, user_id: userId },
+        { ...payload, nome: result.payload.nome, user_id: userId },
         {
           onSuccess: () => {
             toast.success('Categoria criada.');
@@ -166,23 +186,25 @@ export function CategoriaFormSheet({
             autoComplete="off"
             autoCapitalize="sentences"
             enterKeyHint="next"
-            placeholder="Ex.: Sanduíche"
+            placeholder={comValor ? 'Ex.: Sanduíche' : 'Ex.: Combustível'}
             error={errors.nome}
             disabled={busy}
           />
-          <Input
-            label="Valor por entrega (R$)"
-            name="valor"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            enterKeyHint="done"
-            placeholder="0,00"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            error={errors.valor}
-            disabled={busy}
-          />
+          {comValor && (
+            <Input
+              label="Valor por entrega (R$)"
+              name="valor"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              enterKeyHint="done"
+              placeholder="0,00"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              error={errors.valor}
+              disabled={busy}
+            />
+          )}
           {valorAlterado && (
             <p
               role="note"

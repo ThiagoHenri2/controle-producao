@@ -71,6 +71,15 @@ export async function fetchResumoPorDia(
   return data ?? [];
 }
 
+function montarResumo(categorias: ResumoCategoria[], dias: ResumoDia[]): Resumo {
+  return {
+    categorias,
+    dias,
+    totalGeral: Number(categorias[0]?.total_geral ?? 0),
+    quantidadeTotal: categorias.reduce((soma, c) => soma + Number(c.quantidade), 0),
+  };
+}
+
 /**
  * Chama as duas RPCs em paralelo. Valores e total vêm prontos do banco, já
  * filtrados pelas categorias quando houver filtro. `usuario` (só gestor) escolhe o entregador.
@@ -85,10 +94,26 @@ export async function fetchResumo(
     fetchResumoPorCategoria(de, ate, categorias, usuario),
     fetchResumoPorDia(de, ate, categorias, usuario),
   ]);
-  return {
-    categorias: porCategoria,
-    dias,
-    totalGeral: Number(porCategoria[0]?.total_geral ?? 0),
-    quantidadeTotal: porCategoria.reduce((soma, c) => soma + Number(c.quantidade), 0),
-  };
+  return montarResumo(porCategoria, dias);
+}
+
+/**
+ * Resumo de DESPESAS (spec 009): `resumo_despesas_por_categoria` e
+ * `resumo_despesas_por_dia` em paralelo. Mesmo formato do `Resumo` de receitas,
+ * mas `quantidade` é o nº de despesas. `categorias`: `null` = todas; `[]` = nenhuma.
+ */
+export async function fetchResumoDespesas(
+  de: string,
+  ate: string,
+  categorias: FiltroCategorias = null,
+  usuario: UsuarioResumo = null,
+): Promise<Resumo> {
+  const args = resumoArgs(de, ate, categorias, usuario);
+  const [porCategoria, dias] = await Promise.all([
+    supabase.rpc('resumo_despesas_por_categoria', args),
+    supabase.rpc('resumo_despesas_por_dia', args),
+  ]);
+  if (porCategoria.error) throw toRelatorioError(porCategoria.error);
+  if (dias.error) throw toRelatorioError(dias.error);
+  return montarResumo(porCategoria.data ?? [], dias.data ?? []);
 }

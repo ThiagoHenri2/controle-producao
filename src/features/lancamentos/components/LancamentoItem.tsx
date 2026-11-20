@@ -1,6 +1,7 @@
 import { MoreVertical } from 'lucide-react';
 import { formatBRL } from '@/lib/format';
 import type { LancamentoComCategoria } from '../api';
+import { AutorSelo } from './AutorSelo';
 
 type LancamentoItemProps = {
   lancamento: LancamentoComCategoria;
@@ -25,14 +26,7 @@ export function LancamentoItem({ lancamento, autor, onEdit }: LancamentoItemProp
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-base font-semibold text-slate-900">{nome}</span>
-            {autor && (
-              <span
-                data-testid="selo-autor"
-                className="max-w-[55%] shrink-0 truncate rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-800"
-              >
-                por {autor}
-              </span>
-            )}
+            {autor && <AutorSelo autor={autor} />}
           </span>
           <span className="block text-sm tabular-nums text-slate-600">
             {lancamento.quantidade} × {unitario}

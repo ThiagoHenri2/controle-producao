@@ -17,6 +17,8 @@ type TotalCardProps = {
   titulo?: string;
   totalGeral: number;
   quantidadeTotal: number;
+  /** Texto abaixo do total. Padrão: "N entregas". Ex.: "3 lançamentos" (despesas). */
+  detalhe?: string;
   /** Presente só com filtro de categorias ativo. */
   filtro?: TotalCardFiltro;
 };
@@ -26,6 +28,7 @@ export function TotalCard({
   titulo = 'Total no período',
   totalGeral,
   quantidadeTotal,
+  detalhe,
   filtro,
 }: TotalCardProps) {
   const titleId = useId();
@@ -36,24 +39,29 @@ export function TotalCard({
       </h2>
       <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">{formatBRL(totalGeral)}</p>
       <p className="mt-1 text-base font-medium tabular-nums text-slate-700">
-        {formatEntregas(quantidadeTotal)}
+        {detalhe ?? formatEntregas(quantidadeTotal)}
       </p>
-      {filtro && (
-        <p className="mt-2 flex flex-wrap items-center gap-x-1 border-t border-primary/20 pt-1 text-sm text-slate-800">
-          <Filter className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-          <span className="tabular-nums">
-            Filtrando {filtro.selecionadas} de {filtro.total} categorias
-          </span>
-          <span aria-hidden>·</span>
-          <button
-            type="button"
-            onClick={filtro.onLimpar}
-            className="min-h-touch rounded px-1 font-semibold text-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          >
-            Limpar filtro
-          </button>
-        </p>
-      )}
+      {filtro && <FiltroAviso filtro={filtro} />}
     </Card>
+  );
+}
+
+/** "Filtrando 1 de 2 categorias · Limpar filtro" (também usado no card de saldo). */
+export function FiltroAviso({ filtro }: { filtro: TotalCardFiltro }) {
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-1 border-t border-primary/20 pt-1 text-sm text-slate-800">
+      <Filter className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+      <span className="tabular-nums">
+        Filtrando {filtro.selecionadas} de {filtro.total} categorias
+      </span>
+      <span aria-hidden>·</span>
+      <button
+        type="button"
+        onClick={filtro.onLimpar}
+        className="min-h-touch rounded px-1 font-semibold text-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        Limpar filtro
+      </button>
+    </p>
   );
 }

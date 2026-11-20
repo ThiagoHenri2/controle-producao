@@ -42,12 +42,14 @@ export function valorParaInput(valor: number | string): string {
   return (toCentavos(valor) / 100).toFixed(2).replace('.', ',');
 }
 
+const nomeSchema = z
+  .string()
+  .trim()
+  .min(1, CATEGORIA_FORM_MESSAGES.nomeVazio)
+  .max(NOME_MAX, CATEGORIA_FORM_MESSAGES.nomeLongo);
+
 export const categoriaFormSchema = z.object({
-  nome: z
-    .string()
-    .trim()
-    .min(1, CATEGORIA_FORM_MESSAGES.nomeVazio)
-    .max(NOME_MAX, CATEGORIA_FORM_MESSAGES.nomeLongo),
+  nome: nomeSchema,
   valor: z.string().transform((raw, ctx) => {
     const r = parseValorBRL(raw);
     if (!r.ok) {
@@ -110,4 +112,30 @@ export function validarCategoriaForm(
   }
   if (!parsed.success || errors.nome || errors.valor) return { ok: false, errors };
   return { ok: true, payload: toCategoriaPayload(parsed.data) };
+}
+
+/** Categoria de despesa (spec 009): só nome e ativa, sem valor. */
+export const categoriaDespesaFormSchema = z.object({ nome: nomeSchema, ativa: z.boolean() });
+
+export type CategoriaDespesaFormInput = z.input<typeof categoriaDespesaFormSchema>;
+export type CategoriaDespesaPayload = z.output<typeof categoriaDespesaFormSchema>;
+
+export type ValidarCategoriaDespesaResult =
+  { ok: true; payload: CategoriaDespesaPayload } | { ok: false; errors: CategoriaFormErrors };
+
+/** Valida a categoria de despesa (Zod + nome duplicado sem diferenciar maiúsculas). */
+export function validarCategoriaDespesaForm(
+  input: CategoriaDespesaFormInput,
+  existentes: ReadonlyArray<{ id: string; nome: string }>,
+  ignorarId?: string,
+): ValidarCategoriaDespesaResult {
+  const parsed = categoriaDespesaFormSchema.safeParse(input);
+  if (!parsed.success) {
+    const issue = parsed.error.issues.find((i) => i.path[0] === 'nome');
+    return { ok: false, errors: { nome: issue?.message ?? CATEGORIA_FORM_MESSAGES.nomeVazio } };
+  }
+  if (nomeDuplicado(existentes, input.nome, ignorarId)) {
+    return { ok: false, errors: { nome: CATEGORIA_FORM_MESSAGES.nomeDuplicado } };
+  }
+  return { ok: true, payload: parsed.data };
 }

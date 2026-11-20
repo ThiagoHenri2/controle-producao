@@ -61,3 +61,10 @@ export function toCentavos(valor: number | string): number {
 export function fromCentavos(centavos: number): number {
   return Math.round(centavos) / 100;
 }
+
+/** Soma valores em reais (number ou string do `numeric`) em centavos inteiros. */
+export function somarCentavos(valores: Iterable<number | string>): number {
+  let total = 0;
+  for (const v of valores) total += toCentavos(v);
+  return total;
+}

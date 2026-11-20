@@ -1,4 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Aba } from '@/features/despesas/aba';
+import {
+  createCategoriaDespesa,
+  deleteCategoriaDespesa,
+  listCategoriasDespesa,
+  listNomesCategoriasDespesa,
+  updateCategoriaDespesa,
+  type CategoriaDespesa,
+} from '@/features/despesas/api';
+import { categoriaDespesaKeys, despesaKeys } from '@/features/despesas/keys';
 import {
   createCategoria,
   deleteCategoria,
@@ -6,10 +16,19 @@ import {
   listNomesCategorias,
   updateCategoria,
   type Categoria,
-  type CategoriaInsert,
-  type CategoriaPatch,
 } from './api';
-import type { CategoriaError } from './errors';
+import { CATEGORIA_ERROR_MESSAGES, CategoriaError } from './errors';
+
+export { categoriaDespesaKeys };
+
+/** Tipo de categoria: de entrega (com valor por entrega) ou de despesa (sem valor). */
+export type TipoCategoria = Aba;
+
+/**
+ * Linha das telas de categorias: a de entrega tem `valor_unitario`; a de
+ * despesa não (spec 009). `Categoria` e `CategoriaDespesa` são atribuíveis a ela.
+ */
+export type CategoriaLista = CategoriaDespesa & { valor_unitario?: number | string };
 
 /**
  * Query keys de categorias. As listas são por dono (`userId`): o gestor vê as
@@ -25,15 +44,51 @@ export const categoriaKeys = {
   nomes: () => [...categoriaKeys.all, 'nomes'] as const,
 };
 
+type ListOptions = { incluirInativas?: boolean; enabled?: boolean };
+
 /** Categorias de `userId`. Use `incluirInativas: false` na tela Lançar. */
 export function useCategorias(
   userId: string,
-  { incluirInativas = false }: { incluirInativas?: boolean } = {},
+  { incluirInativas = false, enabled = true }: ListOptions = {},
 ) {
   return useQuery<Categoria[], CategoriaError>({
     queryKey: categoriaKeys.list(userId, incluirInativas),
     queryFn: () => listCategorias(userId, { incluirInativas }),
-    enabled: Boolean(userId),
+    enabled: enabled && Boolean(userId),
+  });
+}
+
+/** Categorias de despesa de `userId` (spec 009). */
+export function useCategoriasDespesa(
+  userId: string,
+  { incluirInativas = false, enabled = true }: ListOptions = {},
+) {
+  return useQuery<CategoriaDespesa[], CategoriaError>({
+    queryKey: categoriaDespesaKeys.list(userId, incluirInativas),
+    queryFn: () => listCategoriasDespesa(userId, { incluirInativas }),
+    enabled: enabled && Boolean(userId),
+  });
+}
+
+/**
+ * Categorias de entrega ou de despesa (mesmas keys de `useCategorias` /
+ * `useCategoriasDespesa`, então o cache é compartilhado).
+ */
+export function useCategoriasDoTipo(
+  tipo: TipoCategoria,
+  userId: string,
+  { incluirInativas = false, enabled = true }: ListOptions = {},
+) {
+  const despesa = tipo === 'despesas';
+  return useQuery<CategoriaLista[], CategoriaError>({
+    queryKey: despesa
+      ? categoriaDespesaKeys.list(userId, incluirInativas)
+      : categoriaKeys.list(userId, incluirInativas),
+    queryFn: () =>
+      despesa
+        ? listCategoriasDespesa(userId, { incluirInativas })
+        : listCategorias(userId, { incluirInativas }),
+    enabled: enabled && Boolean(userId),
   });
 }
 
@@ -46,40 +101,79 @@ export function useNomesCategorias({ enabled = true }: { enabled?: boolean } = {
   });
 }
 
-/** Invalida as listas do dono afetado e os nomes (filtro da Equipe). */
-function useInvalidateCategorias() {
-  const queryClient = useQueryClient();
-  return (userId: string) =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: categoriaKeys.user(userId) }),
-      queryClient.invalidateQueries({ queryKey: categoriaKeys.nomes() }),
-    ]);
+/** Nomes de todas as categorias de despesa visíveis (filtro "Despesas" da Equipe). */
+export function useNomesCategoriasDespesa({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery<string[], CategoriaError>({
+    queryKey: categoriaDespesaKeys.nomes(),
+    queryFn: listNomesCategoriasDespesa,
+    enabled,
+  });
 }
 
-export function useCreateCategoria() {
-  const invalidate = useInvalidateCategorias();
-  return useMutation<Categoria, CategoriaError, CategoriaInsert>({
-    mutationFn: createCategoria,
+/**
+ * Invalida as listas do dono afetado e os nomes (filtro da Equipe). Para
+ * despesa, também as despesas do dono (o nome da categoria aparece na lista do dia).
+ */
+function useInvalidateCategorias(tipo: TipoCategoria) {
+  const queryClient = useQueryClient();
+  return (userId: string) =>
+    tipo === 'despesas'
+      ? Promise.all([
+          queryClient.invalidateQueries({ queryKey: categoriaDespesaKeys.user(userId) }),
+          queryClient.invalidateQueries({ queryKey: categoriaDespesaKeys.nomes() }),
+          queryClient.invalidateQueries({ queryKey: despesaKeys.user(userId) }),
+        ])
+      : Promise.all([
+          queryClient.invalidateQueries({ queryKey: categoriaKeys.user(userId) }),
+          queryClient.invalidateQueries({ queryKey: categoriaKeys.nomes() }),
+        ]);
+}
+
+/** Nova categoria. `valor_unitario` é obrigatório para entrega e ignorado para despesa. */
+export type NovaCategoriaVars = {
+  user_id: string;
+  nome: string;
+  ativa?: boolean;
+  valor_unitario?: number;
+};
+export type CategoriaListaPatch = { nome?: string; ativa?: boolean; valor_unitario?: number };
+
+function semValor(): CategoriaError {
+  return new CategoriaError('invalido', CATEGORIA_ERROR_MESSAGES.invalido);
+}
+
+export function useCreateCategoria(tipo: TipoCategoria = 'entregas') {
+  const invalidate = useInvalidateCategorias(tipo);
+  return useMutation<CategoriaLista, CategoriaError, NovaCategoriaVars>({
+    mutationFn: async ({ user_id, nome, ativa, valor_unitario }) => {
+      if (tipo === 'despesas') return createCategoriaDespesa({ user_id, nome, ativa });
+      if (valor_unitario === undefined) throw semValor();
+      return createCategoria({ user_id, nome, ativa, valor_unitario });
+    },
     onSettled: (_res, _err, vars) => invalidate(vars.user_id),
   });
 }
 
-export type UpdateCategoriaVars = { id: string; userId: string; patch: CategoriaPatch };
+export type UpdateCategoriaVars = { id: string; userId: string; patch: CategoriaListaPatch };
 
-export function useUpdateCategoria() {
-  const invalidate = useInvalidateCategorias();
-  return useMutation<Categoria, CategoriaError, UpdateCategoriaVars>({
-    mutationFn: ({ id, patch }) => updateCategoria(id, patch),
+export function useUpdateCategoria(tipo: TipoCategoria = 'entregas') {
+  const invalidate = useInvalidateCategorias(tipo);
+  return useMutation<CategoriaLista, CategoriaError, UpdateCategoriaVars>({
+    mutationFn: ({ id, patch }) =>
+      tipo === 'despesas'
+        ? updateCategoriaDespesa(id, { nome: patch.nome, ativa: patch.ativa })
+        : updateCategoria(id, patch),
     onSettled: (_res, _err, vars) => invalidate(vars.userId),
   });
 }
 
 export type DeleteCategoriaVars = { id: string; userId: string };
 
-export function useDeleteCategoria() {
-  const invalidate = useInvalidateCategorias();
+export function useDeleteCategoria(tipo: TipoCategoria = 'entregas') {
+  const invalidate = useInvalidateCategorias(tipo);
   return useMutation<void, CategoriaError, DeleteCategoriaVars>({
-    mutationFn: ({ id }) => deleteCategoria(id),
+    mutationFn: ({ id }) =>
+      tipo === 'despesas' ? deleteCategoriaDespesa(id) : deleteCategoria(id),
     onSettled: (_res, _err, vars) => invalidate(vars.userId),
   });
 }

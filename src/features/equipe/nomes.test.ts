@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { agruparNomes, nomesFromSearchParams, normalizarNome, withNomes } from './nomes';
+import {
+  agruparNomes,
+  nomesFromSearchParams,
+  normalizarNome,
+  pedeNenhumNome,
+  withNomes,
+} from './nomes';
 import { ordenarEquipe } from './ordenar';
 import type { ResumoUsuario } from './api';
 
@@ -45,5 +51,16 @@ describe('filtro por nome (Equipe)', () => {
         (u) => u.user_id,
       ),
     ).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  it('dnomes (spec 009): [] grava o parâmetro vazio ("nenhum")', () => {
+    const params = new URLSearchParams('tipo=ambos');
+    const next = withNomes(params, [], ['pizza'], 'dnomes');
+    expect(next.getAll('dnomes')).toEqual(['']);
+    expect(pedeNenhumNome(next, 'dnomes')).toBe(true);
+    expect(pedeNenhumNome(params, 'dnomes')).toBe(false);
+    expect(nomesFromSearchParams(new URLSearchParams('dnomes=Pedágio'), 'dnomes')).toEqual([
+      'pedágio',
+    ]);
   });
 });

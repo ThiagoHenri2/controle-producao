@@ -13,3 +13,9 @@ export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { Switch, type SwitchProps } from './Switch';
 export { Select, type SelectProps, type SelectOption } from './Select';
+export { Tabs, TabPanel, type TabsProps, type TabItem, type TabPanelProps } from './Tabs';
+export {
+  SegmentedControl,
+  type SegmentedControlProps,
+  type SegmentedOption,
+} from './SegmentedControl';

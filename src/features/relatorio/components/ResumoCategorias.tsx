@@ -4,15 +4,32 @@ import { formatBRL } from '@/lib/format';
 import type { ResumoCategoria } from '../api';
 import { formatInteiro, percentual } from '../format';
 
-type ResumoCategoriasProps = { categorias: ResumoCategoria[]; totalGeral: number };
+type ResumoCategoriasProps = {
+  categorias: ResumoCategoria[];
+  totalGeral: number;
+  /** Título da seção e nome da lista. Padrão: "Por categoria". */
+  titulo?: string;
+  /** Texto da quantidade. Padrão: "50 un" (entregas). */
+  unidade?: (quantidade: number) => string;
+  /** Cor da barra: laranja (receitas) ou vermelha (despesas). */
+  cor?: 'primary' | 'danger';
+};
+
+const unidadePadrao = (n: number) => `${formatInteiro(n)} un`;
 
 /** Lista por categoria: quantidade, R$ e barra CSS com o % do total. */
-export function ResumoCategorias({ categorias, totalGeral }: ResumoCategoriasProps) {
+export function ResumoCategorias({
+  categorias,
+  totalGeral,
+  titulo = 'Por categoria',
+  unidade = unidadePadrao,
+  cor = 'primary',
+}: ResumoCategoriasProps) {
   const titleId = useId();
   return (
     <section aria-labelledby={titleId} className="flex flex-col gap-2">
       <h2 id={titleId} className="text-base font-bold text-slate-900">
-        Por categoria
+        {titulo}
       </h2>
       <ul
         aria-labelledby={titleId}
@@ -39,7 +56,7 @@ export function ResumoCategorias({ categorias, totalGeral }: ResumoCategoriasPro
                   )}
                 </span>
                 <span className="shrink-0 text-sm tabular-nums text-slate-600">
-                  {formatInteiro(c.quantidade)} un
+                  {unidade(Number(c.quantidade))}
                 </span>
                 <span className="shrink-0 font-semibold tabular-nums text-slate-900">
                   {formatBRL(c.valor)}
@@ -48,7 +65,10 @@ export function ResumoCategorias({ categorias, totalGeral }: ResumoCategoriasPro
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100" aria-hidden>
                 <div
                   data-testid="barra"
-                  className="h-full rounded-full bg-primary"
+                  className={cn(
+                    'h-full rounded-full',
+                    cor === 'danger' ? 'bg-danger' : 'bg-primary',
+                  )}
                   style={{ width: `${pct}%` }}
                 />
               </div>

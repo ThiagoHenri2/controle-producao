@@ -98,4 +98,13 @@ describe('useUsuarioAlvo', () => {
     expect(result.current.search).toBe('?periodo=semana');
     expect(result.current.alvo.isEu).toBe(true);
   });
+
+  it('setAlvo limpa cats e dcats (spec 009) e preserva tipo e aba', () => {
+    const { result } = render(
+      MARIA,
+      '/relatorio?periodo=mes&tipo=ambos&cats=c1&dcats=d1&aba=despesas',
+    );
+    act(() => result.current.alvo.setAlvo('u-joao'));
+    expect(result.current.search).toBe('?periodo=mes&tipo=ambos&aba=despesas&usuario=u-joao');
+  });
 });

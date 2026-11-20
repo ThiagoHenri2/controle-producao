@@ -34,10 +34,11 @@ function campo(err: unknown, key: 'code' | 'message' | 'details'): string {
 
 /**
  * Traduz erros do Postgres/PostgREST em `lancamentos`:
- * - 23514 + constraint `lancamentos_data_nao_futura` → data futura
+ * - 23514 + constraint `*_data_nao_futura` → data futura (`lancamentos` e `despesas`)
  * - 23514 vindo do trigger ("Categoria inativa…") → categoria inativa
  * - 23514 (outros checks: quantidade > 0, observação ≤ 200) → inválido
  * - 23503 (trigger/FK: categoria inexistente ou de outro usuário) → categoria inválida
+ * - 23502 (not null, ex.: valor vazio) → inválido
  */
 export function toLancamentoError(err: unknown, fallback: string): LancamentoError {
   if (err instanceof LancamentoError) return err;
@@ -45,16 +46,18 @@ export function toLancamentoError(err: unknown, fallback: string): LancamentoErr
   const texto = `${campo(err, 'message')} ${campo(err, 'details')}`;
   switch (code) {
     case '23514':
-      if (texto.includes('lancamentos_data_nao_futura')) {
+      if (texto.includes('_data_nao_futura')) {
         return new LancamentoError('data_futura', LANCAMENTO_ERROR_MESSAGES.dataFutura, code);
       }
-      if (/categoria inativa/i.test(texto)) {
+      if (/categoria (de despesa )?inativa/i.test(texto)) {
         return new LancamentoError(
           'categoria_inativa',
           LANCAMENTO_ERROR_MESSAGES.categoriaInativa,
           code,
         );
       }
+      return new LancamentoError('invalido', LANCAMENTO_ERROR_MESSAGES.invalido, code);
+    case '23502':
       return new LancamentoError('invalido', LANCAMENTO_ERROR_MESSAGES.invalido, code);
     case '23503':
       return new LancamentoError(

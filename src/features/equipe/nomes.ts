@@ -10,6 +10,8 @@ import { resolverSelecao } from '@/features/relatorio/filtroCategorias';
 
 /** Parâmetro repetido na URL: `?nomes=pizza&nomes=sanduíche` (nomes podem ter vírgula). */
 export const NOMES_PARAM = 'nomes';
+/** Mesmo formato, para os nomes de categorias de despesa (spec 009). */
+export const DNOMES_PARAM = 'dnomes';
 
 /** Chave de agrupamento: trim + minúsculas. */
 export function normalizarNome(nome: string): string {
@@ -40,26 +42,41 @@ export function agruparNomes(nomes: readonly string[]): OpcaoCategoria[] {
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
-/** Chaves normalizadas de `?nomes=` (sem vazias nem repetidas), na ordem da URL. */
-export function nomesFromSearchParams(params: URLSearchParams): string[] {
-  const chaves = params.getAll(NOMES_PARAM).map(normalizarNome).filter(Boolean);
+/** Chaves normalizadas de `?nomes=` (ou `param`), sem vazias nem repetidas, na ordem da URL. */
+export function nomesFromSearchParams(params: URLSearchParams, param = NOMES_PARAM): string[] {
+  const chaves = params.getAll(param).map(normalizarNome).filter(Boolean);
   return [...new Set(chaves)];
 }
 
 /**
- * Grava a seleção em `params` (cópia). Marcar todos (ou `null`) remove `nomes`.
- * Chaves desconhecidas são descartadas.
+ * A URL pede "nenhum nome" em `param` (`?dnomes=` vazio)? Só acontece em
+ * "Ambos", com as duas seções no filtro (ex.: desmarcar todas as despesas).
+ */
+export function pedeNenhumNome(params: URLSearchParams, param = NOMES_PARAM): boolean {
+  const valores = params.getAll(param);
+  return valores.length > 0 && valores.every((v) => v.trim() === '');
+}
+
+/**
+ * Grava a seleção em `params` (cópia), em `nomes` ou em `param` (ex.: `dnomes`).
+ * Marcar todos (ou `null`) remove o parâmetro; `[]` grava o parâmetro vazio
+ * ("nenhum"). Chaves desconhecidas são descartadas.
  */
 export function withNomes(
   params: URLSearchParams,
   selecionados: readonly string[] | null,
   existentes: readonly string[],
+  param = NOMES_PARAM,
 ): URLSearchParams {
   const next = new URLSearchParams(params);
-  next.delete(NOMES_PARAM);
+  next.delete(param);
+  if (selecionados && selecionados.length === 0) {
+    next.append(param, '');
+    return next;
+  }
   const efetiva: FiltroCategorias = selecionados
     ? resolverSelecao(selecionados.map(normalizarNome), existentes)
     : null;
-  efetiva?.forEach((chave) => next.append(NOMES_PARAM, chave));
+  efetiva?.forEach((chave) => next.append(param, chave));
   return next;
 }
