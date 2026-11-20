@@ -87,5 +87,5 @@ npx supabase functions deploy admin-create-user
 No GitHub, as mesmas variáveis ficam como **Repository secrets**, usadas pelo workflow de deploy.
 
 ## Limitações conhecidas do plano gratuito
-- O Supabase pausa o projeto após cerca de 7 dias sem requisições. O workflow `keep-alive.yml` faz um ping semanal.
+- O Supabase pausa o projeto após cerca de 7 dias sem requisições. O workflow `keep-alive.yml` faz requisições 2x por semana (seg e qui).
 - O GitHub Pages exige repositório público no plano Free. Não há segredo no front, então isso é aceitável.

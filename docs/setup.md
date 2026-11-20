@@ -71,7 +71,75 @@ O app precisa de dois valores:
 
 ## 2. GitHub (hospedagem e deploy)
 
-_Em breve — será escrito na spec 007 (PWA e Deploy): repositório, secrets `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, GitHub Pages e keep-alive._
+O GitHub guarda o código e publica o app de graça no **GitHub Pages**. Toda vez que uma mudança chega na branch `main`, um robô (o **GitHub Actions**) confere o código, roda os testes e publica a versão nova sozinho.
+
+Pré-requisito: seção 1.6 concluída (você tem a **URL** e a **chave anon** do Supabase).
+
+### 2.1 Criar a conta e o repositório
+1. Acesse <https://github.com> e crie uma conta (botão **Sign up**), se ainda não tiver.
+2. No canto superior direito, clique em **+** → **New repository**.
+3. Preencha:
+   - **Repository name:** `controle-producao`
+   - Marque **Public**. (No plano gratuito, o GitHub Pages só funciona em repositório público. Não há senha nem chave secreta no código, então isso é seguro.)
+   - **Não** marque "Add a README" (o projeto já tem os arquivos).
+4. Clique em **Create repository**.
+5. Envie o código para ele (quem cuida do código faz isso uma vez):
+   ```bash
+   git remote add origin https://github.com/<seu-usuario>/controle-producao.git
+   git push -u origin main
+   ```
+
+> O endereço do app será `https://<seu-usuario>.github.io/controle-producao/`. Se você der outro nome ao repositório, o endereço muda junto, sem precisar alterar nada no código.
+
+### 2.2 Cadastrar os secrets (URL e chave do Supabase)
+O robô de publicação precisa dos dois valores da seção 1.6. Eles ficam guardados como **secrets** (ninguém consegue lê-los depois de salvos).
+
+1. No repositório, clique em **Settings** (aba no topo).
+2. No menu lateral, abra **Secrets and variables** → **Actions**.
+3. Na aba **Secrets**, clique em **New repository secret**.
+4. Crie o primeiro:
+   - **Name:** `VITE_SUPABASE_URL`
+   - **Secret:** a **Project URL** (ex.: `https://abcdxyz.supabase.co`)
+   - Clique em **Add secret**.
+5. Clique de novo em **New repository secret** e crie o segundo:
+   - **Name:** `VITE_SUPABASE_ANON_KEY`
+   - **Secret:** a chave **`anon` `public`** (ou a **Publishable key**)
+   - Clique em **Add secret**.
+
+> Os nomes precisam ser **exatamente** esses, em maiúsculas. **Nunca** cadastre aqui a chave `service_role` / **Secret key**.
+> Se faltar algum secret, o deploy falha logo no primeiro passo com a mensagem "Secret faltando".
+
+### 2.3 Ligar o GitHub Pages
+1. Ainda em **Settings**, no menu lateral, clique em **Pages**.
+2. Em **Build and deployment** → **Source**, escolha **GitHub Actions**.
+   (Não escolha "Deploy from a branch".)
+3. Não é preciso clicar em salvar: a escolha vale na hora.
+
+### 2.4 Publicar pela primeira vez
+1. Clique na aba **Actions** do repositório.
+2. Se aparecer um aviso pedindo para habilitar os workflows, clique em **I understand my workflows, go ahead and enable them**.
+3. No menu da esquerda, clique em **Deploy no GitHub Pages** → botão **Run workflow** → **Run workflow**.
+   (Depois desta vez, todo push na `main` publica sozinho.)
+4. Aguarde de 2 a 4 minutos. Quando a bolinha ficar **verde** (✓), clique na execução: o link do site aparece na caixa **deploy**.
+5. Se ficar **vermelha** (✗), clique nela e abra o passo que falhou. Os casos mais comuns:
+   - **"Secret faltando"** → volte ao passo 2.2.
+   - **Lint/Testes/Build** → há um erro no código; nada foi publicado, o site antigo continua no ar.
+   - **"Get Pages site failed"** ou erro no **deploy** → confira o passo 2.3 (Source = GitHub Actions).
+
+### 2.5 Conferir se está tudo certo
+1. Abra `https://<seu-usuario>.github.io/controle-producao/` no celular ou no computador.
+2. A tela de login deve aparecer. Entre com o **admin** (seção 1.5).
+3. (Opcional, no computador) No Chrome, aperte **F12** → aba **Lighthouse** → marque **Mobile** → **Analyze page load**. O app deve aparecer como instalável e sem aviso de ícone faltando.
+
+### 2.6 Manter o Supabase acordado (keep-alive)
+No plano gratuito, o Supabase **pausa** o projeto depois de cerca de 7 dias sem uso. Para evitar isso, o workflow **Keep-alive do Supabase** faz uma consulta simples ao Supabase toda **segunda e quinta-feira** (usa os mesmos secrets do passo 2.2, não precisa configurar nada).
+
+Para testar agora:
+1. Aba **Actions** → **Keep-alive do Supabase** → **Run workflow** → **Run workflow**.
+2. A execução deve ficar **verde** e mostrar `Auth /auth/v1/health: 200`.
+
+> O GitHub desliga workflows agendados de repositórios **sem nenhum commit há 60 dias** e manda um e-mail avisando. Se isso acontecer, abra **Actions** → **Keep-alive do Supabase** e clique em **Enable workflow**.
+> Se o projeto já estiver pausado, abra o painel do Supabase e clique em **Restore project**.
 
 ---
 
@@ -112,3 +180,25 @@ O `login` abre o navegador uma única vez. O deploy mantém "Verify JWT" ligado 
 2. Saia e entre como `joao` / `123456`: o login deve funcionar.
 3. Logs de erro: **Edge Functions** → `admin-users` → **Logs**.
 4. Testes por linha de comando (401/403/409): veja `docs/qa/admin-curl.md`.
+
+---
+
+## 4. Instalar o app no celular (Android)
+
+O app é um **PWA**: funciona no navegador, mas pode ser instalado como um aplicativo, com ícone na tela inicial e abrindo em tela cheia. Não precisa de Play Store.
+
+1. No celular, abra o **Google Chrome**.
+2. Acesse `https://<seu-usuario>.github.io/controle-producao/`.
+3. Se aparecer o aviso **"Instalar app"** (no próprio app ou na parte de baixo do Chrome), toque em **Instalar**.
+4. Se não aparecer, toque no menu **⋮** (três pontinhos, canto superior direito) → **Instalar app** (em alguns celulares aparece **Adicionar à tela inicial**) → **Instalar**.
+5. O ícone laranja com o caminhão aparece na tela inicial. Abra por ele: o app abre em tela cheia, sem a barra de endereço.
+
+**iPhone (Safari):** abra o endereço no Safari → botão **Compartilhar** (quadrado com seta) → **Adicionar à Tela de Início** → **Adicionar**.
+
+> O app precisa de internet para salvar e ver os lançamentos. Sem conexão, ele mostra o aviso "Sem conexão" e não grava nada.
+
+### 4.1 Como o app se atualiza
+- Não é preciso reinstalar nada. Quando uma versão nova é publicada (passo 2.4), o app baixa a atualização sozinho em segundo plano.
+- A versão nova aparece na **próxima vez que você abrir** o app (feche-o totalmente e abra de novo, se estiver com pressa).
+- Os números (lançamentos, totais, relatório) **sempre** vêm direto do servidor, nunca de uma cópia guardada no celular.
+- Se algo parecer travado numa versão antiga: Chrome → **⋮** → **Configurações** → **Configurações do site** → **Todos os sites** → `github.io` → **Limpar e redefinir**. Depois abra o app de novo e faça login.

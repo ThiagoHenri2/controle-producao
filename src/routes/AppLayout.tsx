@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { InstallBanner, OfflineBanner } from '@/components/pwa';
 import { BottomNav, PageHeader } from '@/components/ui';
 import { getNavItems, getPageTitle } from './navigation';
 
@@ -17,10 +18,12 @@ export function AppLayout({ isAdmin = false, headerActions }: AppLayoutProps) {
   return (
     <div className="flex min-h-dvh flex-col">
       <PageHeader title={getPageTitle(pathname)} actions={headerActions} />
+      <OfflineBanner />
       <main
         className="mx-auto w-full max-w-md flex-1 px-4 pt-4"
         style={{ paddingBottom: 'calc(4rem + env(safe-area-inset-bottom) + 1rem)' }}
       >
+        <InstallBanner />
         <Outlet />
       </main>
       <BottomNav items={getNavItems({ isAdmin })} />

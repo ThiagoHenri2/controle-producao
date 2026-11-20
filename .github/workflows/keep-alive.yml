@@ -1,0 +1,65 @@
+# Mantém o projeto do Supabase (plano gratuito) acordado.
+# O Supabase pausa projetos Free após ~7 dias sem atividade. Qualquer requisição
+# à API conta como atividade, então alguns GETs simples bastam (nada é gravado).
+# Roda 2x por semana (segunda e quinta, 12:00 UTC) por segurança, e também pode
+# ser disparado manualmente em Actions > Keep-alive do Supabase > Run workflow.
+name: Keep-alive do Supabase
+
+on:
+  schedule:
+    - cron: '0 12 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping na API do Supabase
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error title=Secret faltando::Cadastre VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          base="${VITE_SUPABASE_URL%/}"
+
+          # GET com a chave pública (anon). Imprime o status HTTP (000 = sem resposta).
+          ping() {
+            curl -sS -o /dev/null -w '%{http_code}' --max-time 30 --retry 3 --retry-delay 10 \
+              -H "apikey: $VITE_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY" \
+              "$1" || echo 000
+          }
+
+          # 1) Raiz da API REST. Hoje o Supabase responde 401 aqui para a chave anon
+          #    (a raiz é restrita à service_role), mas a requisição chega ao projeto.
+          rest=$(ping "$base/rest/v1/")
+          echo "REST /rest/v1/: $rest"
+
+          # 2) Consulta real ao banco (Postgres). Sem login, o RLS/permissões
+          #    respondem 401/403 ou lista vazia, mas o banco processa a consulta.
+          db=$(ping "$base/rest/v1/categorias?select=id&limit=1")
+          echo "REST /rest/v1/categorias: $db"
+
+          # 3) Health do Auth: deve responder 200 quando o projeto está ativo.
+          auth=$(ping "$base/auth/v1/health")
+          echo "Auth /auth/v1/health: $auth"
+
+          ok=1
+          for s in "$rest" "$db"; do
+            case "$s" in 2??|4??) ;; *) ok=0 ;; esac
+          done
+          [ "$auth" = "200" ] || ok=0
+
+          if [ "$ok" = 1 ]; then
+            echo "Supabase respondeu: projeto ativo."
+          else
+            echo "::error title=Supabase sem resposta::Respostas inesperadas (5xx/000). Confira no painel do Supabase se o projeto está pausado e clique em Restore."
+            exit 1
+          fi

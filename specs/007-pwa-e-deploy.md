@@ -12,9 +12,9 @@ Publicar o app na internet de graça (GitHub Pages), instalável no Android como
    - manifest: `name: "Entregas — Controle de Produção"`, `short_name: "Entregas"`, `lang: "pt-BR"`, `display: "standalone"`, `orientation: "portrait"`, `theme_color` = primary, `background_color` = fundo.
    - ícones: `pwa-192.png`, `pwa-512.png`, `maskable-512.png` em `public/`, mais o `apple-touch-icon.png`.
    - service worker com `registerType: 'autoUpdate'`; precache somente do app shell; `navigateFallback: 'index.html'`; **sem** runtime cache de `*.supabase.co`.
-4. **Banner "Instalar app"** (frontend-ui): captura `beforeinstallprompt` e mostra o botão "Instalar" no header ou em Lançar; pode ser dispensado (lembra em localStorage).
+4. **Banner "Instalar app"** (frontend-ui): captura `beforeinstallprompt` já no carregamento do módulo e mostra um banner no topo do conteúdo de todas as telas logadas; pode ser dispensado por 30 dias (lembra em localStorage). No iOS mostra a dica "Compartilhar → Adicionar à Tela de Início". Não aparece com o app já instalado (standalone). Código em `src/components/pwa/`.
 5. **Aviso offline:** se `navigator.onLine === false`, mostra uma faixa "Sem conexão — os lançamentos não serão salvos". O app não grava offline nesta versão.
-6. **Workflow `keep-alive.yml`:** cron semanal, um `curl` na API REST do Supabase.
+6. **Workflow `keep-alive.yml`:** cron 2x por semana (`0 12 * * 1,4`) + `workflow_dispatch`; `curl` com a chave anon em `/rest/v1/`, numa consulta a `/rest/v1/categorias` (chega ao Postgres) e em `/auth/v1/health`. Hoje o Supabase responde 401 na raiz `/rest/v1/` para a chave anon (restrita à `service_role`), então o "status 200" do aceite vem do `/auth/v1/health`; 401/403 nas rotas REST ainda contam como atividade.
 7. **`docs/setup.md`:** guia passo a passo para leigos, cobrindo a conta GitHub, a criação do repositório, os secrets, a ativação do Pages (Source: GitHub Actions), a criação do projeto Supabase, as migrations, o deploy da Edge Function, o primeiro admin e a instalação no celular.
 
 ## Fora de escopo (versões futuras)

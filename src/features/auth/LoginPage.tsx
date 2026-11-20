@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff, Truck } from 'lucide-react';
 import { z } from 'zod';
+import { OfflineBanner } from '@/components/pwa';
 import { Button, Card, Input } from '@/components/ui';
 import { AUTH_MESSAGES, SignInError } from '@/lib/auth';
 import { ROUTES } from '@/routes/navigation';
@@ -60,72 +61,75 @@ export function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-8">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          <Truck className="h-7 w-7" aria-hidden />
-        </span>
-        <h1 className="text-2xl font-bold text-slate-900">Entregas</h1>
-        <p className="text-slate-600">Controle de produção</p>
-      </div>
+    <>
+      <OfflineBanner placement="top" />
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-8">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+            <Truck className="h-7 w-7" aria-hidden />
+          </span>
+          <h1 className="text-2xl font-bold text-slate-900">Entregas</h1>
+          <p className="text-slate-600">Controle de produção</p>
+        </div>
 
-      <Card>
-        <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input
-            label="Usuário"
-            name="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="username"
-            spellCheck={false}
-            enterKeyHint="next"
-            error={fieldErrors.username}
-            disabled={submitting}
-          />
-          <Input
-            label="Senha"
-            name="password"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            enterKeyHint="go"
-            error={fieldErrors.password}
-            disabled={submitting}
-            endAdornment={
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                aria-pressed={showPassword}
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+        <Card>
+          <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <Input
+              label="Usuário"
+              name="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="username"
+              spellCheck={false}
+              enterKeyHint="next"
+              error={fieldErrors.username}
+              disabled={submitting}
+            />
+            <Input
+              label="Senha"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              enterKeyHint="go"
+              error={fieldErrors.password}
+              disabled={submitting}
+              endAdornment={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  aria-pressed={showPassword}
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" aria-hidden />
+                  ) : (
+                    <Eye className="h-5 w-5" aria-hidden />
+                  )}
+                </button>
+              }
+            />
+
+            {formError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-danger/30 bg-red-50 p-3 text-sm font-medium text-danger"
               >
-                {showPassword ? (
-                  <EyeOff className="h-5 w-5" aria-hidden />
-                ) : (
-                  <Eye className="h-5 w-5" aria-hidden />
-                )}
-              </button>
-            }
-          />
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <p>{formError}</p>
+              </div>
+            )}
 
-          {formError && (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-lg border border-danger/30 bg-red-50 p-3 text-sm font-medium text-danger"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <p>{formError}</p>
-            </div>
-          )}
-
-          <Button type="submit" size="lg" fullWidth loading={submitting}>
-            Entrar
-          </Button>
-        </form>
-      </Card>
-    </main>
+            <Button type="submit" size="lg" fullWidth loading={submitting}>
+              Entrar
+            </Button>
+          </form>
+        </Card>
+      </main>
+    </>
   );
 }
