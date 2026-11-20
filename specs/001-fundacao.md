@@ -12,7 +12,7 @@ Criar o esqueleto do app web: build, lint, testes, design system mínimo, layout
 - Vitest + Testing Library + jsdom, com setup em `src/test/setup.ts`.
 - React Router (`HashRouter`) com rotas placeholder: `/login`, `/` (Lançar), `/relatorio`, `/categorias`, `/admin/usuarios`.
 - TanStack Query (`QueryClientProvider`) com um `queryClient` padrão (`staleTime` 30s, `retry` 1).
-- `src/lib/supabase.ts`: cliente único que lê `import.meta.env.VITE_SUPABASE_*` e lança um erro claro se as variáveis faltarem.
+- `src/lib/supabase.ts`: cliente único que lê `import.meta.env.VITE_SUPABASE_*` e valida as variáveis. Se faltarem, a importação **não** quebra: `main.tsx` checa `supabaseConfig.ok` e renderiza a tela "Configuração ausente"; qualquer uso acidental do cliente lança `SupabaseConfigError` com mensagem clara.
 - `src/lib/format.ts`: `formatBRL(valor: number | string)`, `formatData(yyyyMMdd)` → `dd/MM/yyyy`, `rotuloData(yyyyMMdd)` → "Hoje"/"Ontem"/`dd/MM`, `hojeISO()` → `yyyy-MM-dd` no fuso local, `toCentavos`/`fromCentavos`.
 - Componentes base em `src/components/ui/`: `Button` (variantes primary/secondary/danger/ghost; loading), `Input` (label + erro), `Card`, `Stepper` (−/+ com input numérico), `BottomNav`, `PageHeader`, `EmptyState`, `Skeleton`, `Toast` (provider + hook `useToast`), `ConfirmDialog`.
 - `AppLayout`: header compacto com título da página + conteúdo + `BottomNav` fixa.
@@ -20,7 +20,7 @@ Criar o esqueleto do app web: build, lint, testes, design system mínimo, layout
 ## Design tokens (Tailwind)
 | Token | Valor sugerido | Uso |
 |---|---|---|
-| `primary` | laranja `#EA580C` (orange-600) | ações principais (tema "lanche") |
+| `primary` | laranja `#C2410C` (orange-700); `theme-color` continua `#EA580C` | ações principais (tema "lanche"). Mudado de orange-600 para orange-700 porque branco sobre `#EA580C` tem contraste 3,6:1 (falha AA para texto normal); sobre `#C2410C` é 5,2:1. |
 | `primary-foreground` | branco | texto em botões primários |
 | `surface` | `#FFFFFF` / fundo `#F8FAFC` | cards / página |
 | `success` / `danger` | green-600 / red-600 | toasts, excluir |
