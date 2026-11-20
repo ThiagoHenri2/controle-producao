@@ -10,3 +10,4 @@
 | 6 | 2026-11-20 | `HashRouter` | O GitHub Pages não tem rewrite de SPA; o hash evita 404 no reload. |
 | 7 | 2026-11-20 | Edge Function única `admin-users` com ações | Menos deploys e lógica de autorização centralizada (o plano citava `admin-create-user`). |
 | 8 | 2026-11-20 | Papel **gerente**; admin ⊇ gerente ("gestor") vê e opera dados de todos os entregadores | Pedido do usuário: acompanhar quanto pagar a cada entregador. Substitui a regra anterior "admin não vê lançamentos alheios". Entregadores continuam isolados entre si. Lançamentos gravam `criado_por` para auditoria. |
+| 9 | 2026-11-20 | `despesas.categoria_despesa_id` com FK `on delete no action` (não `restrict`) | Ambos impedem excluir categoria em uso, mas o Postgres devolve 23001 para `RESTRICT` e 23503 para `NO ACTION`; o contrato da spec 009 e o front ("oferece Desativar") usam 23503. Atenção: `lancamentos.categoria_id` (0001) é `restrict` e devolve **23001** ao excluir categoria com lançamentos. |

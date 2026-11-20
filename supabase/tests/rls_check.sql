@@ -3,9 +3,10 @@
 -- Verificação de RLS e do snapshot de preço (spec 002), data futura
 -- (0002, spec 004), RPCs de resumo (0003, spec 005) e nome de categoria
 -- único sem diferenciar maiúsculas (0004) e filtro por categorias nas
--- RPCs de resumo (0005) e papel gerente / gestor (0006, spec 008).
+-- RPCs de resumo (0005), papel gerente / gestor (0006, spec 008) e
+-- despesas (0007, spec 009: seções 3d, 3e, 4f e trechos de 4d/4e/5/6).
 --
--- Requer as migrations 0001..0006 aplicadas.
+-- Requer as migrations 0001..0007 aplicadas.
 --
 -- Como rodar: cole o arquivo inteiro no SQL Editor do Supabase e execute.
 -- Tudo roda dentro de uma transação e termina em ROLLBACK: nada fica gravado.
@@ -24,7 +25,8 @@
 -- Obs.: resumo_por_usuario lista TODOS os perfis do banco. Rodando no
 -- projeto real, os perfis reais aparecem também; por isso as asserções da
 -- seção 4 olham as linhas dos usuários de teste e usam um período antigo
--- (2001-01) onde não deve haver dados reais.
+-- (2001-01) onde não deve haver dados reais. As despesas usam 2001-02
+-- (resumo_despesas_por_usuario_nomes também lista todos os perfis).
 -- =====================================================================
 
 begin;
@@ -572,6 +574,369 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- 3d) Despesas (0007, spec 009) — usuário A (entregador), período 2001-02:
+--     categorias de despesa (sem valor), despesas com valor livre,
+--     validações, anti-forja e RPCs resumo_despesas_*.
+--     Ids: categorias_despesa = ...-4000-e000-...; despesas = ...-4000-f000-...
+-- ---------------------------------------------------------------------
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000a', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_estado text;
+  v_linhas integer;
+  r        record;
+begin
+  assert auth.uid() = '00000000-0000-4000-a000-00000000000a', 'setup: auth.uid() deveria ser A';
+
+  -- categorias de despesa: só nome e ativa (user_id vem do default)
+  insert into public.categorias_despesa (id, nome) values
+    ('00000000-0000-4000-e000-0000000000a1', 'Combustível'),
+    ('00000000-0000-4000-e000-0000000000a2', 'Manutenção');
+  insert into public.categorias_despesa (id, nome, ativa)
+  values ('00000000-0000-4000-e000-0000000000a3', 'Antiga', false);
+  assert (select user_id from public.categorias_despesa where id = '00000000-0000-4000-e000-0000000000a1')
+         = '00000000-0000-4000-a000-00000000000a',
+    'categorias_despesa: user_id deveria vir do default auth.uid()';
+
+  -- nome duplicado sem diferenciar maiúsculas/espaços => 23505
+  v_estado := null;
+  begin
+    insert into public.categorias_despesa (nome) values ('  combustível ');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23505', format('categorias_despesa: nome duplicado (ci) deveria dar 23505 (veio %s)', v_estado);
+
+  -- nome vazio / > 60 => 23514
+  v_estado := null;
+  begin
+    insert into public.categorias_despesa (nome) values ('   ');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('categorias_despesa: nome vazio deveria dar 23514 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.categorias_despesa (nome) values (repeat('x', 61));
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('categorias_despesa: nome > 60 deveria dar 23514 (veio %s)', v_estado);
+
+  -- updated_at mantido pelo trigger
+  update public.categorias_despesa set nome = 'Manutenção' where id = '00000000-0000-4000-e000-0000000000a2';
+  assert (select updated_at >= created_at from public.categorias_despesa
+           where id = '00000000-0000-4000-e000-0000000000a2'),
+    'categorias_despesa: updated_at inválido';
+
+  -- despesa de R$ 35,90 tentando forjar criado_por = B => vira A
+  insert into public.despesas (id, criado_por, categoria_despesa_id, data, valor) values
+    ('00000000-0000-4000-f000-0000000000a1', '00000000-0000-4000-a000-00000000000b',
+     '00000000-0000-4000-e000-0000000000a1', '2001-02-10', 35.90);
+  select * into r from public.despesas where id = '00000000-0000-4000-f000-0000000000a1';
+  assert r.user_id = '00000000-0000-4000-a000-00000000000a' and r.valor = 35.90 and r.descricao is null,
+    format('despesa de A deveria ter user_id A e valor 35,90 (veio %s)', r);
+  assert r.criado_por = '00000000-0000-4000-a000-00000000000a',
+    'FORJA: despesa de A gravou criado_por = B';
+
+  insert into public.despesas (id, categoria_despesa_id, data, valor, descricao) values
+    ('00000000-0000-4000-f000-0000000000a2', '00000000-0000-4000-e000-0000000000a2', '2001-02-11', 10.00, 'Pneu'),
+    ('00000000-0000-4000-f000-0000000000a3', '00000000-0000-4000-e000-0000000000a2', '2001-02-10', 4.10, null);
+
+  -- valor 0 / negativo => 23514; vazio (null) => 23502
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000a1', '2001-02-10', 0);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: valor 0 deveria dar 23514 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000a1', '2001-02-10', -0.01);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: valor negativo deveria dar 23514 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000a1', '2001-02-10', null);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23502', format('despesa: valor vazio deveria dar 23502 (veio %s)', v_estado);
+
+  -- data futura (hoje + 2) => 23514; hoje + 1 é a margem de fuso (aceita)
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000a1', current_date + 2, 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: data hoje+2 deveria dar 23514 (veio %s)', v_estado);
+
+  -- descrição > 200 => 23514
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor, descricao)
+    values ('00000000-0000-4000-e000-0000000000a1', '2001-02-10', 1.00, repeat('x', 201));
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: descrição > 200 deveria dar 23514 (veio %s)', v_estado);
+
+  -- categoria inativa => 23514; categoria inexistente => 23503
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000a3', '2001-02-10', 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: categoria inativa deveria dar 23514 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000ff', '2001-02-10', 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23503', format('despesa: categoria inexistente deveria dar 23503 (veio %s)', v_estado);
+
+  -- update: valor 0 => 23514; trocar para categoria inativa => 23514
+  v_estado := null;
+  begin
+    update public.despesas set valor = 0 where id = '00000000-0000-4000-f000-0000000000a1';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: update para valor 0 deveria dar 23514 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    update public.despesas set categoria_despesa_id = '00000000-0000-4000-e000-0000000000a3'
+     where id = '00000000-0000-4000-f000-0000000000a1';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('despesa: update para categoria inativa deveria dar 23514 (veio %s)', v_estado);
+
+  -- editar valor/descrição/categoria (ativa) funciona
+  update public.despesas set valor = 36.00, descricao = 'Posto' where id = '00000000-0000-4000-f000-0000000000a1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'A deveria editar a própria despesa';
+  update public.despesas set valor = 35.90, descricao = null where id = '00000000-0000-4000-f000-0000000000a1';
+
+  -- excluir categoria com despesas => 23503 (FK on delete no action); desativar funciona
+  v_estado := null;
+  begin
+    delete from public.categorias_despesa where id = '00000000-0000-4000-e000-0000000000a2';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23503', format('excluir categoria de despesa com despesas deveria dar 23503 (veio %s)', v_estado);
+  update public.categorias_despesa set ativa = false where id = '00000000-0000-4000-e000-0000000000a2';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'A deveria desativar a categoria de despesa';
+  -- despesas antigas continuam editáveis (categoria não mudou)
+  update public.despesas set descricao = 'Pneu dianteiro' where id = '00000000-0000-4000-f000-0000000000a2';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'despesa em categoria desativada deveria continuar editável (sem trocar a categoria)';
+  update public.categorias_despesa set ativa = true where id = '00000000-0000-4000-e000-0000000000a2';
+
+  -- RPC por categoria (2001-02): Combustível 35,90 (1) e Manutenção 14,10 (2); total 50,00
+  assert (select count(*) from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28')) = 2,
+    'resumo_despesas_por_categoria: A deveria ter 2 categorias em 2001-02';
+  select * into r from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28')
+   where categoria_id = '00000000-0000-4000-e000-0000000000a1';
+  assert r.nome = 'Combustível' and r.ativa and r.quantidade = 1 and r.valor = 35.90 and r.total_geral = 50.00,
+    format('resumo_despesas_por_categoria: Combustível deveria ser 1 / 35,90 / total 50,00 (veio %s)', r);
+  select * into r from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28')
+   where categoria_id = '00000000-0000-4000-e000-0000000000a2';
+  assert r.quantidade = 2 and r.valor = 14.10 and r.total_geral = 50.00,
+    format('resumo_despesas_por_categoria: Manutenção deveria ser 2 / 14,10 (veio %s)', r);
+  assert (select categoria_id from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28') limit 1)
+         = '00000000-0000-4000-e000-0000000000a1',
+    'resumo_despesas_por_categoria: ordem deveria ser valor desc (Combustível primeiro)';
+  -- p_usuario = o próprio id funciona
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000a') limit 1) = 50.00,
+    'resumo_despesas_por_categoria: p_usuario = A deveria ser 50,00';
+  -- filtro por categoria
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28',
+            array['00000000-0000-4000-e000-0000000000a2']::uuid[]) limit 1) = 14.10,
+    'resumo_despesas_por_categoria [Manutenção]: total deveria ser 14,10';
+  assert not exists (select 1 from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', '{}'::uuid[])),
+    'resumo_despesas_por_categoria [{}]: deveria vir vazio';
+
+  -- RPC por dia: 02-11 10,00 (1); 02-10 40,00 (2); ordem data desc
+  assert (select count(*) from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28')) = 2,
+    'resumo_despesas_por_dia: A deveria ter 2 dias';
+  select * into r from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28') limit 1;
+  assert r.data = '2001-02-11' and r.quantidade = 1 and r.valor = 10.00,
+    format('resumo_despesas_por_dia: 1ª linha deveria ser 2001-02-11 / 1 / 10,00 (veio %s)', r);
+  select * into r from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28') where data = '2001-02-10';
+  assert r.quantidade = 2 and r.valor = 40.00,
+    format('resumo_despesas_por_dia: 2001-02-10 deveria ser 2 / 40,00 (veio %s)', r);
+  select * into r from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28',
+                     array['00000000-0000-4000-e000-0000000000a1']::uuid[]);
+  assert r.data = '2001-02-10' and r.valor = 35.90,
+    format('resumo_despesas_por_dia [Combustível]: deveria ser só 2001-02-10 / 35,90 (veio %s)', r);
+
+  -- receitas não são afetadas: não há lançamentos de A em 2001-02
+  assert not exists (select 1 from public.resumo_por_categoria('2001-02-01', '2001-02-28')),
+    'resumo_por_categoria (receitas) não deveria somar despesas';
+
+  -- período inválido => 22023
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_categoria('2001-02-28', '2001-02-01');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '22023', format('resumo_despesas_por_categoria: início > fim deveria dar 22023 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_dia('1999-01-01', '2001-02-01');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '22023', format('resumo_despesas_por_dia: > 366 dias deveria dar 22023 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_dia(null, '2001-02-01');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '22023', format('resumo_despesas_por_dia: período nulo deveria dar 22023 (veio %s)', v_estado);
+
+  -- entregador: RPC de gestor e p_usuario alheio => 42501
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: resumo_despesas_por_usuario_nomes de entregador deveria dar 42501 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+                                                        '00000000-0000-4000-a000-00000000000b');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: resumo_despesas_por_categoria com p_usuario alheio deveria dar 42501 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_dia(p_de => '2001-02-01', p_ate => '2001-02-28',
+                                                  p_usuario => '00000000-0000-4000-a000-00000000000b');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: resumo_despesas_por_dia com p_usuario alheio deveria dar 42501 (veio %s)', v_estado);
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 3e) Despesas — usuário B (ainda entregador): isolado de A
+-- ---------------------------------------------------------------------
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000b', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_estado text;
+  v_linhas integer;
+  v_falhou boolean;
+begin
+  assert auth.uid() = '00000000-0000-4000-a000-00000000000b', 'setup: auth.uid() deveria ser B';
+  assert not public.is_gestor(), 'is_gestor() deveria ser false para B (entregador)';
+
+  -- não vê
+  assert (select count(*) from public.categorias_despesa) = 0, 'VAZAMENTO: B vê categorias de despesa de A';
+  assert (select count(*) from public.despesas) = 0, 'VAZAMENTO: B vê despesas de A';
+
+  -- não altera / não apaga
+  update public.despesas set valor = 999 where id = '00000000-0000-4000-f000-0000000000a1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: B alterou despesa de A';
+  delete from public.despesas where id = '00000000-0000-4000-f000-0000000000a2';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: B apagou despesa de A';
+  update public.categorias_despesa set nome = 'hackeada' where id = '00000000-0000-4000-e000-0000000000a1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: B alterou categoria de despesa de A';
+  delete from public.categorias_despesa where id = '00000000-0000-4000-e000-0000000000a3';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: B apagou categoria de despesa de A';
+
+  -- não lança na categoria de A (nem para si, nem para A)
+  v_estado := null;
+  begin
+    insert into public.despesas (categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-e000-0000000000a1', '2001-02-10', 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23503', format('VAZAMENTO: B lançou despesa na categoria de A (veio %s)', v_estado);
+  v_falhou := false;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000a1', '2001-02-10', 1.00);
+  exception when others then v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: B lançou despesa para A';
+
+  -- não cria categoria de despesa em nome de A
+  v_estado := null;
+  begin
+    insert into public.categorias_despesa (user_id, nome)
+    values ('00000000-0000-4000-a000-00000000000a', 'Intrusa');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: B criou categoria de despesa com user_id de A (veio %s)', v_estado);
+
+  -- B cria os próprios dados (mesmo nome de A é permitido)
+  insert into public.categorias_despesa (id, nome)
+  values ('00000000-0000-4000-e000-0000000000b1', 'Combustível');
+  insert into public.despesas (id, categoria_despesa_id, data, valor)
+  values ('00000000-0000-4000-f000-0000000000b1', '00000000-0000-4000-e000-0000000000b1', '2001-02-10', 99.00);
+
+  -- não repontar a própria despesa para a categoria de A, nem passá-la para A
+  v_estado := null;
+  begin
+    update public.despesas set categoria_despesa_id = '00000000-0000-4000-e000-0000000000a1'
+     where id = '00000000-0000-4000-f000-0000000000b1';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23503', format('VAZAMENTO: B apontou despesa para categoria de A (veio %s)', v_estado);
+  v_falhou := false;
+  begin
+    update public.despesas set user_id = '00000000-0000-4000-a000-00000000000a'
+     where id = '00000000-0000-4000-f000-0000000000b1';
+  exception when others then v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: B transferiu despesa para A';
+
+  -- RPCs só somam o que é de B
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28') limit 1) = 99.00,
+    'VAZAMENTO: resumo_despesas_por_categoria de B deveria ser só 99,00';
+  assert (select sum(valor) from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28')) = 99.00,
+    'VAZAMENTO: resumo_despesas_por_dia de B deveria ser só 99,00';
+  assert not exists (select 1 from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28',
+                       array['00000000-0000-4000-e000-0000000000a1']::uuid[])),
+    'VAZAMENTO: filtro com id de categoria de A devolveu dados para B';
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+                                                        '00000000-0000-4000-a000-00000000000a');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: p_usuario = A por B deveria dar 42501 (veio %s)', v_estado);
+
+  -- autores: A não é autor de nada visível a B
+  assert not exists (select 1 from public.autores(array['00000000-0000-4000-a000-00000000000a']::uuid[])),
+    'VAZAMENTO: autores (B) devolveu A';
+end $$;
+
+-- A continua com as próprias despesas intactas
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000a', 'role', 'authenticated')::text, true);
+
+do $$
+begin
+  assert (select count(*) from public.despesas) = 3, 'A deveria ver só as 3 próprias despesas';
+  assert (select sum(valor) from public.despesas) = 50.00, 'despesas de A deveriam somar 50,00 (B alterou algo?)';
+  assert (select count(*) from public.categorias_despesa) = 3, 'A deveria ver só as 3 próprias categorias de despesa';
+  assert (select nome from public.categorias_despesa where id = '00000000-0000-4000-e000-0000000000a1') = 'Combustível',
+    'categoria de despesa de A foi alterada por B';
+end $$;
+
+-- ---------------------------------------------------------------------
 -- 4) Admin = gestor (0006, decisão #8): vê todos os perfis E os dados de
 --    todos. (Antes da 0006 este teste esperava o contrário.)
 --    O resumo sem p_usuario continua sendo só do próprio admin.
@@ -987,6 +1352,332 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- 4f) Despesas com gestor (0007). Estado: A e C entregadores, B admin,
+--     G gerente. Período 2001-02.
+--     C ("Ana") cria a própria despesa (20,00) e não vê as de A nem de B.
+-- ---------------------------------------------------------------------
+do $$
+begin
+  assert auth.uid() = '00000000-0000-4000-a000-00000000000d', 'setup: auth.uid() deveria ser C';
+  assert (select count(*) from public.despesas) = 0, 'VAZAMENTO: C vê despesas alheias';
+  assert (select count(*) from public.categorias_despesa) = 0, 'VAZAMENTO: C vê categorias de despesa alheias';
+
+  insert into public.categorias_despesa (id, nome)
+  values ('00000000-0000-4000-e000-0000000000d1', 'Combustível');
+  insert into public.despesas (id, categoria_despesa_id, data, valor)
+  values ('00000000-0000-4000-f000-0000000000d1', '00000000-0000-4000-e000-0000000000d1', '2001-02-10', 20.00);
+end $$;
+
+-- Gerente G ("Maria"): vê, lança, edita e exclui despesas e categorias de
+-- despesa de A ("João"); anti-forja; Equipe de despesas com filtro por nome.
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000c', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_linhas integer;
+  v_estado text;
+  r        record;
+begin
+  assert auth.uid() = '00000000-0000-4000-a000-00000000000c', 'setup: auth.uid() deveria ser G';
+
+  -- vê dados de despesa de todos
+  assert (select count(*) from public.categorias_despesa where user_id = '00000000-0000-4000-a000-00000000000a') = 3,
+    'gerente deveria ver as 3 categorias de despesa de A';
+  assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000a') = 3,
+    'gerente deveria ver as 3 despesas de A';
+  assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000d') = 1,
+    'gerente deveria ver a despesa de C';
+
+  -- CRUD de categoria de despesa de A
+  insert into public.categorias_despesa (id, user_id, nome)
+  values ('00000000-0000-4000-e000-0000000000c9', '00000000-0000-4000-a000-00000000000a', 'Lavagem');
+  update public.categorias_despesa set nome = 'Lavagens' where id = '00000000-0000-4000-e000-0000000000c9';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'gerente deveria renomear categoria de despesa de A';
+  delete from public.categorias_despesa where id = '00000000-0000-4000-e000-0000000000c9';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'gerente deveria excluir categoria de despesa de A';
+  insert into public.categorias_despesa (id, user_id, nome)
+  values ('00000000-0000-4000-e000-0000000000a4', '00000000-0000-4000-a000-00000000000a', 'Pedágio');
+  -- duplicado ci na lista de A => 23505
+  v_estado := null;
+  begin
+    insert into public.categorias_despesa (user_id, nome)
+    values ('00000000-0000-4000-a000-00000000000a', ' COMBUSTível ');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23505', format('gerente: categoria de despesa duplicada (ci) para A deveria dar 23505 (veio %s)', v_estado);
+
+  -- lança despesa para A tentando forjar criado_por = A => vira G
+  insert into public.despesas (id, user_id, criado_por, categoria_despesa_id, data, valor, descricao) values
+    ('00000000-0000-4000-f000-0000000000c1', '00000000-0000-4000-a000-00000000000a',
+     '00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000a4', '2001-02-12', 5.00, 'Rodovia');
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000c1')
+         = '00000000-0000-4000-a000-00000000000c',
+    'FORJA: criado_por da despesa enviada pelo gerente deveria ser G';
+
+  -- edita despesa de A (feita pelo próprio A)
+  update public.despesas set valor = 36.00, descricao = 'corrigido'
+   where id = '00000000-0000-4000-f000-0000000000a1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'gerente deveria editar despesa de A';
+  update public.despesas set valor = 35.90, descricao = null where id = '00000000-0000-4000-f000-0000000000a1';
+
+  -- lança e exclui despesa de A
+  insert into public.despesas (id, user_id, categoria_despesa_id, data, valor)
+  values ('00000000-0000-4000-f000-0000000000c2', '00000000-0000-4000-a000-00000000000a',
+          '00000000-0000-4000-e000-0000000000a1', '2001-02-13', 1.00);
+  delete from public.despesas where id = '00000000-0000-4000-f000-0000000000c2';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'gerente deveria excluir despesa de A';
+
+  -- update não muda criado_por (nem para outro, nem para null)
+  update public.despesas set criado_por = '00000000-0000-4000-a000-00000000000d'
+   where id = '00000000-0000-4000-f000-0000000000c1';
+  update public.despesas set criado_por = null
+   where id = '00000000-0000-4000-f000-0000000000c1';
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000c1')
+         = '00000000-0000-4000-a000-00000000000c',
+    'FORJA: update alterou criado_por da despesa';
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000a1')
+         = '00000000-0000-4000-a000-00000000000a',
+    'criado_por da despesa feita por A deveria continuar A após edição do gerente';
+
+  -- categoria de outro usuário (C) => 23503; inativa de A => 23514; valor 0 => 23514; data +2 => 23514
+  v_estado := null;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000d1', '2001-02-10', 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23503', format('gerente lançou despesa para A com categoria de C (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    update public.despesas set categoria_despesa_id = '00000000-0000-4000-e000-0000000000d1'
+     where id = '00000000-0000-4000-f000-0000000000c1';
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23503', format('gerente apontou despesa de A para categoria de C (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000a3', '2001-02-10', 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('gerente lançou despesa para A em categoria inativa (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000a1', '2001-02-10', 0);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('gerente: despesa com valor 0 deveria dar 23514 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000a1', current_date + 2, 1.00);
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '23514', format('gerente: despesa com data hoje+2 deveria dar 23514 (veio %s)', v_estado);
+
+  -- relatório de despesas de A (p_usuario): 35,90 + 14,10 + 5,00 = 55,00
+  assert (select count(*) from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000a')) = 3,
+    'gerente: resumo_despesas_por_categoria de A deveria ter 3 categorias';
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000a') limit 1) = 55.00,
+    'gerente: resumo_despesas_por_categoria de A deveria ser 55,00';
+  assert (select total_geral from public.resumo_despesas_por_categoria(
+            p_de => '2001-02-01', p_ate => '2001-02-28',
+            p_categorias => array['00000000-0000-4000-e000-0000000000a4']::uuid[],
+            p_usuario => '00000000-0000-4000-a000-00000000000a') limit 1) = 5.00,
+    'gerente: resumo_despesas_por_categoria de A só Pedágio deveria ser 5,00';
+  assert (select count(*) from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000a')) = 3,
+    'gerente: resumo_despesas_por_dia de A deveria ter 3 dias';
+  assert (select valor from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000a') where data = '2001-02-12') = 5.00,
+    'gerente: resumo_despesas_por_dia de A em 2001-02-12 deveria ser 5,00';
+  -- sem p_usuario: só o próprio gerente (nada)
+  assert not exists (select 1 from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28')),
+    'VAZAMENTO: resumo_despesas_por_categoria do gerente sem p_usuario soma outros usuários';
+  assert not exists (select 1 from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28')),
+    'VAZAMENTO: resumo_despesas_por_dia do gerente sem p_usuario soma outros usuários';
+
+  -- Equipe de despesas 2001-02: A 55,00 (4), B 99,00 (1), C 20,00 (1), G 0
+  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+   where user_id = '00000000-0000-4000-a000-00000000000a';
+  assert r.valor = 55.00 and r.quantidade = 4 and r.nome = 'Teste A' and r.username = 'rls_teste_a'
+     and r.role = 'user' and r.ativo,
+    format('Equipe despesas: A deveria ter 4 / 55,00 (veio %s)', r);
+  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+   where user_id = '00000000-0000-4000-a000-00000000000d';
+  assert r.valor = 20.00 and r.quantidade = 1, format('Equipe despesas: C deveria ter 1 / 20,00 (veio %s)', r);
+  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+   where user_id = '00000000-0000-4000-a000-00000000000b';
+  assert r.valor = 99.00 and r.quantidade = 1 and r.role = 'admin',
+    format('Equipe despesas: B deveria ter 1 / 99,00 (veio %s)', r);
+  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+   where user_id = '00000000-0000-4000-a000-00000000000c';
+  assert r.valor = 0 and r.quantidade = 0 and r.role = 'gerente',
+    format('Equipe despesas: G deveria aparecer com 0 / 0 (veio %s)', r);
+  assert (select bool_and(total_geral = (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')))
+            from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')),
+    'Equipe despesas: total_geral deveria ser a soma de todos';
+  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')
+           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
+                             '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-a000-00000000000d')) = 174.00,
+    'Equipe despesas: total dos usuários de teste deveria ser 174,00';
+  -- ordem: valor desc => B, A, C
+  assert (select array_agg(user_id order by ord) from (
+            select user_id, row_number() over () as ord
+              from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28')) x
+           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
+                             '00000000-0000-4000-a000-00000000000d'))
+         = array['00000000-0000-4000-a000-00000000000b', '00000000-0000-4000-a000-00000000000a',
+                 '00000000-0000-4000-a000-00000000000d']::uuid[],
+    'Equipe despesas: ordem deveria ser valor desc (B, A, C)';
+
+  -- filtro por NOME sem caixa/espaços (só letras ASCII mudam de caixa, para
+  -- não depender do locale do lower()): " COMBUSTível " => A 35,90; B 99,00; C 20,00
+  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array[' COMBUSTível '])
+   where user_id = '00000000-0000-4000-a000-00000000000a';
+  assert r.valor = 35.90 and r.quantidade = 1, format('Equipe despesas [Combustível]: A deveria ter 1 / 35,90 (veio %s)', r);
+  assert (select sum(valor) from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array[' COMBUSTível '])
+           where user_id in ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000b',
+                             '00000000-0000-4000-a000-00000000000d')) = 154.90,
+    'Equipe despesas [Combustível]: total dos usuários de teste deveria ser 154,90';
+  select * into r from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array['PEDágio'])
+   where user_id = '00000000-0000-4000-a000-00000000000d';
+  assert r.valor = 0 and r.quantidade = 0, format('Equipe despesas [Pedágio]: C deveria ter 0 (veio %s)', r);
+  assert (select valor from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', array['PEDágio'])
+           where user_id = '00000000-0000-4000-a000-00000000000a') = 5.00,
+    'Equipe despesas [Pedágio]: A deveria ter 5,00';
+  assert (select valor from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28', '{}'::text[])
+           where user_id = '00000000-0000-4000-a000-00000000000a') = 0,
+    'Equipe despesas [nomes {}]: A deveria ter 0';
+  -- receitas não somam despesas: Equipe de receitas em 2001-02 => A 0
+  assert (select valor from public.resumo_por_usuario_nomes('2001-02-01', '2001-02-28')
+           where user_id = '00000000-0000-4000-a000-00000000000a') = 0,
+    'resumo_por_usuario_nomes (receitas) não deveria somar despesas';
+  -- período inválido => 22023
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_usuario_nomes('2001-02-28', '2001-02-01');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '22023', format('resumo_despesas_por_usuario_nomes: início > fim deveria dar 22023 (veio %s)', v_estado);
+
+  -- autores: G e A são autores de despesas/lançamentos visíveis
+  assert (select count(*) from public.autores(array['00000000-0000-4000-a000-00000000000c',
+                                                    '00000000-0000-4000-a000-00000000000a']::uuid[])) = 2,
+    'autores (gerente): deveria devolver G e A';
+end $$;
+
+-- Admin B também é gestor para despesas: lança para C (B não é autor de
+-- nenhum lançamento visível a C, então o selo de C vem só de despesas).
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000b', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_linhas integer;
+begin
+  assert public.is_gestor(), 'is_gestor() deveria ser true para o admin';
+  assert (select count(*) from public.despesas where user_id = '00000000-0000-4000-a000-00000000000d') = 1,
+    'admin deveria ver a despesa de C';
+  insert into public.despesas (id, user_id, criado_por, categoria_despesa_id, data, valor) values
+    ('00000000-0000-4000-f000-0000000000b9', '00000000-0000-4000-a000-00000000000d',
+     '00000000-0000-4000-a000-00000000000d', '00000000-0000-4000-e000-0000000000d1', '2001-02-15', 7.00);
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000b9')
+         = '00000000-0000-4000-a000-00000000000b',
+    'FORJA: criado_por da despesa do admin para C deveria ser B';
+  update public.despesas set descricao = 'Óleo' where id = '00000000-0000-4000-f000-0000000000b9';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 1, 'admin deveria editar despesa de C';
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+            '00000000-0000-4000-a000-00000000000d') limit 1) = 27.00,
+    'admin: resumo_despesas_por_categoria de C deveria ser 27,00';
+  -- sem p_usuario: só as do próprio admin (99,00)
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28') limit 1) = 99.00,
+    'VAZAMENTO: resumo_despesas_por_categoria do admin sem p_usuario soma outros usuários';
+end $$;
+
+-- C vê a despesa lançada pelo admin, com o autor; continua isolada
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000d', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_estado text;
+  r        record;
+begin
+  assert (select count(*) from public.despesas) = 2, 'C deveria ver as 2 próprias despesas';
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000b9')
+         = '00000000-0000-4000-a000-00000000000b',
+    'C deveria ver a despesa com criado_por = B';
+  -- selo "por <nome>" via despesas
+  select * into r from public.autores(array['00000000-0000-4000-a000-00000000000b']::uuid[]);
+  assert r.id = '00000000-0000-4000-a000-00000000000b' and r.nome = 'Teste B',
+    format('autores (C): deveria devolver "Teste B" pela despesa (veio %s)', r);
+  assert not exists (select 1 from public.autores(array['00000000-0000-4000-a000-00000000000c',
+                                                        '00000000-0000-4000-a000-00000000000a']::uuid[])),
+    'VAZAMENTO: autores (C) devolveu autores de despesas/lançamentos de A';
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28') limit 1) = 27.00,
+    'C: resumo_despesas_por_categoria próprio deveria ser 27,00';
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: resumo_despesas_por_usuario_nomes de C deveria dar 42501 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28', null,
+                                                  '00000000-0000-4000-a000-00000000000a');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('VAZAMENTO: resumo_despesas_por_dia com p_usuario = A por C deveria dar 42501 (veio %s)', v_estado);
+end $$;
+
+-- A vê a despesa lançada pela gerente, com autor; não forja criado_por
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-00000000000a', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  r record;
+begin
+  assert (select count(*) from public.despesas) = 4, 'A deveria ver as 4 próprias despesas';
+  assert (select count(*) from public.despesas where user_id <> '00000000-0000-4000-a000-00000000000a') = 0,
+    'VAZAMENTO: A vê despesas alheias';
+  select * into r from public.despesas where id = '00000000-0000-4000-f000-0000000000c1';
+  assert r.valor = 5.00 and r.criado_por = '00000000-0000-4000-a000-00000000000c',
+    format('A deveria ver a despesa de 5,00 lançada por G (veio %s)', r);
+  assert exists (select 1 from public.autores(array['00000000-0000-4000-a000-00000000000c']::uuid[])),
+    'autores (A): deveria devolver G';
+  assert not exists (select 1 from public.autores(array['00000000-0000-4000-a000-00000000000b']::uuid[])),
+    'VAZAMENTO: autores (A) devolveu B (autor só de despesas de C/B)';
+
+  insert into public.despesas (id, criado_por, categoria_despesa_id, data, valor) values
+    ('00000000-0000-4000-f000-0000000000a9', '00000000-0000-4000-a000-00000000000c',
+     '00000000-0000-4000-e000-0000000000a1', '2001-02-14', 1.00);
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000a9')
+         = '00000000-0000-4000-a000-00000000000a',
+    'FORJA: A gravou despesa com criado_por = G';
+  update public.despesas set criado_por = '00000000-0000-4000-a000-00000000000a'
+   where id = '00000000-0000-4000-f000-0000000000c1';
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000c1')
+         = '00000000-0000-4000-a000-00000000000c',
+    'FORJA: A apagou a autoria da gerente na despesa';
+  delete from public.despesas where id = '00000000-0000-4000-f000-0000000000a9';
+
+  assert (select total_geral from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28') limit 1) = 55.00,
+    'A: resumo_despesas_por_categoria próprio deveria ser 55,00';
+end $$;
+
+-- ---------------------------------------------------------------------
 -- 4d) Gerente inativo perde tudo
 -- ---------------------------------------------------------------------
 reset role;
@@ -1011,6 +1702,22 @@ begin
   exception when others then v_estado := sqlstate;
   end;
   assert v_estado = '42501', format('gerente inativo: resumo_por_usuario deveria dar 42501 (veio %s)', v_estado);
+  -- despesas (0007)
+  assert (select count(*) from public.despesas) = 0, 'VAZAMENTO: gerente inativo vê despesas';
+  assert (select count(*) from public.categorias_despesa) = 0, 'VAZAMENTO: gerente inativo vê categorias de despesa';
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('gerente inativo: resumo_despesas_por_usuario_nomes deveria dar 42501 (veio %s)', v_estado);
+  v_estado := null;
+  begin
+    perform * from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28', null,
+                                                        '00000000-0000-4000-a000-00000000000a');
+  exception when others then v_estado := sqlstate;
+  end;
+  assert v_estado = '42501', format('gerente inativo: resumo_despesas_por_categoria de A deveria dar 42501 (veio %s)', v_estado);
 end $$;
 
 reset role;
@@ -1040,6 +1747,36 @@ begin
     'service_role: sem criado_por deveria usar user_id';
   delete from public.lancamentos where id in ('00000000-0000-4000-d000-0000000000e1',
                                               '00000000-0000-4000-d000-0000000000e2');
+
+  -- despesas (0007): mesma regra de criado_por sem sessão
+  insert into public.despesas (id, user_id, criado_por, categoria_despesa_id, data, valor) values
+    ('00000000-0000-4000-f000-0000000000e1', '00000000-0000-4000-a000-00000000000a',
+     '00000000-0000-4000-a000-00000000000c', '00000000-0000-4000-e000-0000000000a1', '2001-02-16', 1.00);
+  insert into public.despesas (id, user_id, categoria_despesa_id, data, valor) values
+    ('00000000-0000-4000-f000-0000000000e2', '00000000-0000-4000-a000-00000000000a',
+     '00000000-0000-4000-e000-0000000000a1', '2001-02-16', 1.00);
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000e1')
+         = '00000000-0000-4000-a000-00000000000c',
+    'service_role: criado_por enviado na despesa deveria ser mantido';
+  assert (select criado_por from public.despesas where id = '00000000-0000-4000-f000-0000000000e2')
+         = '00000000-0000-4000-a000-00000000000a',
+    'service_role: despesa sem criado_por deveria usar user_id';
+  -- service_role também não lança despesa de A em categoria de C (sem RLS, o trigger barra)
+  declare
+    v_estado text;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000d1', '2001-02-16', 1.00);
+  exception when others then
+    v_estado := sqlstate;
+    assert v_estado = '23503', format('service_role: despesa de A com categoria de C deveria dar 23503 (veio %s)', v_estado);
+  end;
+  assert not exists (select 1 from public.despesas
+                      where user_id = '00000000-0000-4000-a000-00000000000a'
+                        and categoria_despesa_id = '00000000-0000-4000-e000-0000000000d1'),
+    'service_role: despesa de A com categoria de C foi aceita';
+  delete from public.despesas where id in ('00000000-0000-4000-f000-0000000000e1',
+                                           '00000000-0000-4000-f000-0000000000e2');
 end $$;
 
 reset role;
@@ -1053,6 +1790,9 @@ begin
     'on delete set null: lançamento feito por G deveria continuar, com criado_por null';
   assert not exists (select 1 from public.profiles where id = '00000000-0000-4000-a000-00000000000c'),
     'profile de G deveria ter sido apagado em cascata';
+  assert exists (select 1 from public.despesas
+                  where id = '00000000-0000-4000-f000-0000000000c1' and criado_por is null),
+    'on delete set null: despesa feita por G deveria continuar, com criado_por null';
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -1087,6 +1827,22 @@ begin
     v_falhou := true;
   end;
   assert v_falhou, 'VAZAMENTO: usuário inativo criou categoria';
+
+  -- despesas (0007)
+  assert (select count(*) from public.despesas) = 0, 'VAZAMENTO: usuário inativo vê despesas';
+  assert (select count(*) from public.categorias_despesa) = 0, 'VAZAMENTO: usuário inativo vê categorias de despesa';
+  assert not exists (select 1 from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28')),
+    'VAZAMENTO: usuário inativo vê o próprio resumo de despesas';
+  update public.despesas set valor = 1 where id = '00000000-0000-4000-f000-0000000000a1';
+  get diagnostics v_linhas = row_count;
+  assert v_linhas = 0, 'VAZAMENTO: usuário inativo alterou despesa';
+  v_falhou := false;
+  begin
+    insert into public.categorias_despesa (nome) values ('Nova');
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: usuário inativo criou categoria de despesa';
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -1172,6 +1928,56 @@ begin
     v_falhou := true;
   end;
   assert v_falhou, 'VAZAMENTO: anon executa is_gestor';
+
+  -- despesas (0007)
+  v_falhou := false;
+  begin
+    perform 1 from public.despesas limit 1;
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon tem acesso a despesas';
+
+  v_falhou := false;
+  begin
+    perform 1 from public.categorias_despesa limit 1;
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon tem acesso a categorias_despesa';
+
+  v_falhou := false;
+  begin
+    insert into public.despesas (user_id, categoria_despesa_id, data, valor)
+    values ('00000000-0000-4000-a000-00000000000a', '00000000-0000-4000-e000-0000000000a1', '2001-02-10', 1.00);
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon insere em despesas';
+
+  v_falhou := false;
+  begin
+    perform * from public.resumo_despesas_por_categoria('2001-02-01', '2001-02-28');
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon executa resumo_despesas_por_categoria';
+
+  v_falhou := false;
+  begin
+    perform * from public.resumo_despesas_por_dia('2001-02-01', '2001-02-28');
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon executa resumo_despesas_por_dia';
+
+  v_falhou := false;
+  begin
+    perform * from public.resumo_despesas_por_usuario_nomes('2001-02-01', '2001-02-28');
+  exception when others then
+    v_falhou := true;
+  end;
+  assert v_falhou, 'VAZAMENTO: anon executa resumo_despesas_por_usuario_nomes';
 end $$;
 
 reset role;
