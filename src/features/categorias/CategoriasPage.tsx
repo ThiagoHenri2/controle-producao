@@ -1,6 +1,7 @@
 import { TabPanel, Tabs } from '@/components/ui';
 import { ABAS, useAba } from '@/features/despesas/aba';
 import { UsuarioAlvoSelect } from '@/features/equipe/components/UsuarioAlvoSelect';
+import { usePermissoesAlvo } from '@/features/equipe/usePermissoesAlvo';
 import { useUsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { CategoriasLista } from './components/CategoriasLista';
 
@@ -12,15 +13,30 @@ const ID_ABAS = 'categorias-aba';
  */
 export function CategoriasPage() {
   const alvo = useUsuarioAlvo();
-  const [aba, setAba] = useAba();
+  const [abaUrl, setAba] = useAba();
+  const { podeVerDespesas } = usePermissoesAlvo(alvo);
+  // Gerente vendo um atendente não tem Despesas (spec 011): `?aba=despesas` cai em entregas.
+  const aba = podeVerDespesas ? abaUrl : 'entregas';
 
   return (
     <div className="flex flex-col gap-4">
-      <Tabs label="Tipo de categoria" idBase={ID_ABAS} items={ABAS} value={aba} onChange={setAba} />
+      {podeVerDespesas && (
+        <Tabs
+          label="Tipo de categoria"
+          idBase={ID_ABAS}
+          items={ABAS}
+          value={aba}
+          onChange={setAba}
+        />
+      )}
       <UsuarioAlvoSelect alvo={alvo} acao="vendo" rotulo="Categorias de" />
-      <TabPanel idBase={ID_ABAS} value={aba}>
-        <CategoriasLista key={aba} tipo={aba} alvo={alvo} />
-      </TabPanel>
+      {podeVerDespesas ? (
+        <TabPanel idBase={ID_ABAS} value={aba}>
+          <CategoriasLista key={aba} tipo={aba} alvo={alvo} />
+        </TabPanel>
+      ) : (
+        <CategoriasLista key="entregas" tipo="entregas" alvo={alvo} />
+      )}
     </div>
   );
 }

@@ -1,10 +1,17 @@
-import { useState } from 'react';
-import { AlertCircle, ChevronDown, Plus, Tags } from 'lucide-react';
-import { Button, EmptyState, SkeletonList } from '@/components/ui';
+import { useState, type ReactNode } from 'react';
+import { AlertCircle, ChevronDown, Eye, EyeOff, Info, Plus, Tags } from 'lucide-react';
+import { Button, ConfirmDialog, EmptyState, SkeletonList, useToast } from '@/components/ui';
+import { usePermissoesAlvo } from '@/features/equipe/usePermissoesAlvo';
 import type { UsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { cn } from '@/lib/cn';
 import { CATEGORIA_ERROR_MESSAGES } from '../errors';
-import { useCategoriasDoTipo, type CategoriaLista, type TipoCategoria } from '../hooks';
+import {
+  useCategoriasDoTipo,
+  useSetVisibilidadeTodas,
+  useToggleVisibilidade,
+  type CategoriaLista,
+  type TipoCategoria,
+} from '../hooks';
 import { CategoriaFormSheet } from './CategoriaFormSheet';
 import { CategoriaItem } from './CategoriaItem';
 
@@ -44,7 +51,45 @@ export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
     alvo.alvoId,
     { incluirInativas: true },
   );
+  const toast = useToast();
+  const perms = usePermissoesAlvo(alvo);
+  const toggle = useToggleVisibilidade();
+  const todas = useSetVisibilidadeTodas();
+  const [confirmaTodas, setConfirmaTodas] = useState<boolean | null>(null);
   const [sheet, setSheet] = useState<SheetState>({ open: false });
+  // Visibilidade para o gerente (spec 011): só categorias de entrega, só o dono com gerente.
+  const gerenteNome =
+    tipo === 'entregas' && perms.podeAlterarVisibilidade ? perms.meuGerente?.nome : undefined;
+  const gerenteVendo = tipo === 'entregas' && perms.ehGerenteVendoAtendente;
+  const visibilidade =
+    gerenteNome === undefined
+      ? undefined
+      : {
+          gerenteNome,
+          onChange: (c: CategoriaLista, visivel: boolean) =>
+            toggle.mutate(
+              { id: c.id, userId: c.user_id, visivel },
+              { onError: () => toast.error(CATEGORIA_ERROR_MESSAGES.visibilidade) },
+            ),
+        };
+
+  function aplicarTodas() {
+    if (confirmaTodas === null) return;
+    const visivel = confirmaTodas;
+    todas.mutate(
+      { userId: alvo.alvoId, visivel },
+      {
+        onSuccess: () => {
+          setConfirmaTodas(null);
+          toast.success(visivel ? 'Todas as categorias visíveis.' : 'Todas as categorias ocultas.');
+        },
+        onError: (err) => {
+          setConfirmaTodas(null);
+          toast.error(err.message);
+        },
+      },
+    );
+  }
   const [mostrarInativas, setMostrarInativas] = useState(false);
 
   const novaCategoria = () => setSheet({ open: true, categoria: null });
@@ -58,6 +103,7 @@ export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
       categoria={sheet.categoria}
       userId={alvo.alvoId}
       existentes={data ?? []}
+      gerenteNome={gerenteNome}
       onClose={() => setSheet({ open: false })}
     />
   );
@@ -88,8 +134,18 @@ export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
       <div className="flex flex-col gap-4">
         <EmptyState
           icon={Tags}
-          title={alvo.isEu ? textos.vazioEu : textos.vazioOutro(alvo.alvoNome)}
-          description={textos.vazioDescricao}
+          title={
+            gerenteVendo
+              ? `${alvo.alvoNome} ainda não liberou nenhuma categoria para você.`
+              : alvo.isEu
+                ? textos.vazioEu
+                : textos.vazioOutro(alvo.alvoNome)
+          }
+          description={
+            gerenteVendo
+              ? 'Você pode criar uma categoria para ele. Ela já nasce visível.'
+              : textos.vazioDescricao
+          }
           action={
             <Button
               fullWidth
@@ -110,10 +166,34 @@ export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {gerenteVendo && <Nota>Você vê apenas as categorias liberadas por {alvo.alvoNome}.</Nota>}
+      {gerenteNome !== undefined && (
+        <div className="flex flex-col gap-2">
+          <Nota>Seu gerente {gerenteNome} só vê as categorias marcadas.</Nota>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              leftIcon={<Eye className="h-5 w-5" aria-hidden />}
+              onClick={() => setConfirmaTodas(true)}
+            >
+              Mostrar todas
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              leftIcon={<EyeOff className="h-5 w-5" aria-hidden />}
+              onClick={() => setConfirmaTodas(false)}
+            >
+              Ocultar todas
+            </Button>
+          </div>
+        </div>
+      )}
       {ativas.length > 0 ? (
         <ul aria-label={textos.ativas} className="flex flex-col gap-2">
           {ativas.map((c) => (
-            <CategoriaItem key={c.id} categoria={c} onEdit={editar} />
+            <CategoriaItem key={c.id} categoria={c} onEdit={editar} visibilidade={visibilidade} />
           ))}
         </ul>
       ) : (
@@ -142,7 +222,12 @@ export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
           {mostrarInativas && (
             <ul id={inativasId} aria-label={textos.inativas} className="flex flex-col gap-2">
               {inativas.map((c) => (
-                <CategoriaItem key={c.id} categoria={c} onEdit={editar} />
+                <CategoriaItem
+                  key={c.id}
+                  categoria={c}
+                  onEdit={editar}
+                  visibilidade={visibilidade}
+                />
               ))}
             </ul>
           )}
@@ -168,6 +253,32 @@ export function CategoriasLista({ tipo, alvo }: CategoriasListaProps) {
         </div>
       </div>
       {sheetEl}
+      <ConfirmDialog
+        open={confirmaTodas !== null}
+        title={confirmaTodas ? 'Mostrar todas?' : 'Ocultar todas?'}
+        description={
+          confirmaTodas
+            ? `${gerenteNome ?? 'Seu gerente'} passa a ver todas as suas categorias.`
+            : `${gerenteNome ?? 'Seu gerente'} deixa de ver todas as suas categorias.`
+        }
+        confirmLabel={confirmaTodas ? 'Mostrar todas' : 'Ocultar todas'}
+        variant="primary"
+        loading={todas.isPending}
+        onConfirm={aplicarTodas}
+        onCancel={() => setConfirmaTodas(null)}
+      />
     </div>
+  );
+}
+
+function Nota({ children }: { children: ReactNode }) {
+  return (
+    <p
+      role="note"
+      className="flex items-start gap-2 rounded-lg bg-primary-soft p-3 text-sm font-medium text-slate-900"
+    >
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+      <span>{children}</span>
+    </p>
   );
 }

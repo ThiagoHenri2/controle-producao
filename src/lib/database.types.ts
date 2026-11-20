@@ -51,6 +51,8 @@ export type Database = {
           updated_at: string;
           user_id: string;
           valor_unitario: number;
+          /** Migration 0009 (spec 011): o gerente do dono só vê a categoria quando true. */
+          visivel_gerente: boolean;
         };
         Insert: {
           ativa?: boolean;
@@ -60,6 +62,7 @@ export type Database = {
           updated_at?: string;
           user_id?: string;
           valor_unitario: number;
+          visivel_gerente?: boolean;
         };
         Update: {
           ativa?: boolean;
@@ -69,6 +72,7 @@ export type Database = {
           updated_at?: string;
           user_id?: string;
           valor_unitario?: number;
+          visivel_gerente?: boolean;
         };
         Relationships: [];
       };

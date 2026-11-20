@@ -32,6 +32,11 @@ type CategoriaFormSheetProps = {
   userId: string;
   /** Lista completa (ativas e inativas) do dono, para checar nome duplicado. */
   existentes: ReadonlyArray<Pick<CategoriaLista, 'id' | 'nome'>>;
+  /**
+   * Só para o dono de categorias de entrega com gerente (spec 011): mostra o
+   * switch "Visível para <nome>" (desmarcado ao criar).
+   */
+  gerenteNome?: string;
   onClose: () => void;
 };
 
@@ -43,6 +48,7 @@ export function CategoriaFormSheet({
   categoria,
   userId,
   existentes,
+  gerenteNome,
   onClose,
 }: CategoriaFormSheetProps) {
   const formId = useId();
@@ -60,6 +66,7 @@ export function CategoriaFormSheet({
   const [nome, setNome] = useState(categoria?.nome ?? '');
   const [valor, setValor] = useState(valorInicial);
   const [ativa, setAtiva] = useState(categoria?.ativa ?? true);
+  const [visivel, setVisivel] = useState(categoria?.visivel_gerente ?? false);
   const [errors, setErrors] = useState<CategoriaFormErrors>({});
   const [deleteStep, setDeleteStep] = useState<DeleteStep>('none');
 
@@ -78,7 +85,10 @@ export function CategoriaFormSheet({
       return;
     }
     setErrors({});
-    const payload: CategoriaListaPatch = result.payload;
+    const payload: CategoriaListaPatch = {
+      ...result.payload,
+      ...(gerenteNome !== undefined && { visivel_gerente: visivel }),
+    };
 
     const onError = (err: CategoriaError) => {
       if (err.kind === 'duplicado') setErrors({ nome: err.message });
@@ -221,6 +231,19 @@ export function CategoriaFormSheet({
             onChange={setAtiva}
             disabled={busy}
           />
+          {gerenteNome !== undefined && (
+            <Switch
+              label={`Visível para ${gerenteNome}`}
+              description={
+                visivel
+                  ? `${gerenteNome} vê esta categoria.`
+                  : `${gerenteNome} não vê esta categoria.`
+              }
+              checked={visivel}
+              onChange={setVisivel}
+              disabled={busy}
+            />
+          )}
         </form>
       </BottomSheet>
 

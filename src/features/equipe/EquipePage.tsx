@@ -28,6 +28,7 @@ import { ROUTES } from '@/routes/navigation';
 import { EquipeLista } from './components/EquipeLista';
 import { useNomesFiltro, useResumoEquipe, useResumoEquipeDespesas } from './hooks';
 import { combinarEquipe, type LinhaEquipe } from './ordenar';
+import { useGerenteRestrito } from './usePermissoesAlvo';
 import { USUARIO_PARAM } from './useUsuarioAlvo';
 
 type Filtro = ReturnType<typeof useNomesFiltro>;
@@ -56,7 +57,10 @@ function resumoFiltro(
 export function EquipePage() {
   const [searchParams] = useSearchParams();
   const write = useWriteSearchParams();
-  const [tipo, setTipo] = useTipoRelatorio();
+  const gerenteRestrito = useGerenteRestrito();
+  const [tipoUrl, setTipo] = useTipoRelatorio();
+  // O gerente só vê Receitas na Equipe (spec 011); o admin mantém o seletor completo.
+  const tipo = gerenteRestrito ? 'receitas' : tipoUrl;
   const { periodo, hoje, escolherRapido, escolherPersonalizado } = usePeriodoFiltro();
   const comReceitas = mostraReceitas(tipo);
   const comDespesas = mostraDespesas(tipo);
@@ -100,7 +104,10 @@ export function EquipePage() {
   const linkPara = (userId: string) => {
     const params = periodoToSearchParams(periodo);
     params.set(USUARIO_PARAM, userId);
-    return { pathname: ROUTES.relatorio, search: toSearchString(withTipo(params, tipo)) };
+    return {
+      pathname: ROUTES.relatorio,
+      search: toSearchString(gerenteRestrito ? params : withTipo(params, tipo)),
+    };
   };
 
   const pendente = (comReceitas && receitas.isPending) || (comDespesas && despesas.isPending);
@@ -215,7 +222,13 @@ export function EquipePage() {
         >
           {formatIntervalo(periodo)}
         </p>
-        <SegmentedControl label="Tipo" options={TIPOS} value={tipo} onChange={setTipo} />
+        {gerenteRestrito ? (
+          <p className="text-center text-sm text-slate-700">
+            Valores consideram apenas as categorias liberadas por cada atendente.
+          </p>
+        ) : (
+          <SegmentedControl label="Tipo" options={TIPOS} value={tipo} onChange={setTipo} />
+        )}
         {secoes.some((s) => s.filtro.opcoes.length > 0) && (
           <CategoriasFiltroButton
             texto={textoBotaoFiltro(

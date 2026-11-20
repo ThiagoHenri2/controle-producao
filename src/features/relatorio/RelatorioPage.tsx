@@ -4,6 +4,7 @@ import { AlertCircle, BarChart3, FilterX, Plus, Receipt } from 'lucide-react';
 import { Button, EmptyState, SegmentedControl } from '@/components/ui';
 import { searchComAba } from '@/features/despesas/aba';
 import { UsuarioAlvoSelect } from '@/features/equipe/components/UsuarioAlvoSelect';
+import { usePermissoesAlvo } from '@/features/equipe/usePermissoesAlvo';
 import { useUsuarioAlvo } from '@/features/equipe/useUsuarioAlvo';
 import { ROUTES } from '@/routes/navigation';
 import { CategoriasFiltroButton } from './components/CategoriasFiltroButton';
@@ -58,7 +59,10 @@ export function RelatorioPage() {
   const [searchParams] = useSearchParams();
   const write = useWriteSearchParams();
   const alvo = useUsuarioAlvo();
-  const [tipo, setTipo] = useTipoRelatorio();
+  const permissoes = usePermissoesAlvo(alvo);
+  const [tipoUrl, setTipo] = useTipoRelatorio();
+  // Gerente vendo um atendente só tem Receitas (spec 011): `tipo`/`dcats` da URL são ignorados.
+  const tipo = permissoes.podeVerDespesas ? tipoUrl : 'receitas';
   const { periodo, hoje, escolherRapido, escolherPersonalizado } = usePeriodoFiltro();
   const comReceitas = mostraReceitas(tipo);
   const comDespesas = mostraDespesas(tipo);
@@ -294,7 +298,16 @@ export function RelatorioPage() {
         >
           {formatIntervalo(periodo)}
         </p>
-        <SegmentedControl label="Tipo" options={TIPOS} value={tipo} onChange={setTipo} />
+        {permissoes.podeVerDespesas ? (
+          <SegmentedControl label="Tipo" options={TIPOS} value={tipo} onChange={setTipo} />
+        ) : (
+          <p
+            role="note"
+            className="rounded-lg bg-primary-soft p-3 text-sm font-medium text-slate-900"
+          >
+            Mostrando apenas categorias liberadas por {alvo.alvoNome}.
+          </p>
+        )}
         {temOpcoes && (
           <CategoriasFiltroButton
             texto={textoBotaoFiltro(

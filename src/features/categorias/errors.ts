@@ -6,6 +6,7 @@ export const CATEGORIA_ERROR_MESSAGES = {
   invalido: 'Nome ou valor inválido.',
   carregar: 'Não foi possível carregar as categorias.',
   salvar: 'Não foi possível salvar. Verifique sua conexão e tente de novo.',
+  visibilidade: 'Não foi possível alterar a visibilidade. Tente de novo.',
   excluir: 'Não foi possível excluir. Verifique sua conexão e tente de novo.',
 } as const;
 

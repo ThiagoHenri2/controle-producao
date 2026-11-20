@@ -71,6 +71,17 @@ O **atendente** decide quais das suas **categorias de lançamento** o seu gerent
   - o **admin** mantém o seletor completo.
 - O `useAuth` já expõe o papel. Use `isAdmin` para distinguir admin de gerente nessas regras.
 
+## Desvios da implementação do front (T011.3 a T011.5)
+- Regras centralizadas em `usePermissoesAlvo(alvo)` e `useGerenteRestrito()` (`src/features/equipe/usePermissoesAlvo.ts`). O hook recebe o `UsuarioAlvo` já calculado em vez de chamá-lo por dentro. "Gerente" aqui é `isGerente && !isAdmin`.
+- O switch só aparece quando `meu_gerente` devolve um gerente (a RPC roda só quando o alvo é o próprio usuário). Se a RPC falhar, o front trata como "sem gerente".
+- Cada `CategoriaItem` virou um cartão com o botão de editar em cima e, embaixo, a linha do switch; assim o toque no switch nunca abre o sheet. Toggle otimista com rollback; a falha mostra o toast "Não foi possível alterar a visibilidade. Tente de novo.".
+- "Mostrar todas"/"Ocultar todas" ficam acima da lista (só com categorias cadastradas), com confirmação curta.
+- Gerente sem categorias liberadas: o EmptyState de Lançar traz também o link "Cadastrar categorias", porque o gerente pode criar (nasce visível).
+- Telas escondem o seletor de tipo e as abas em vez de desabilitá-los; `tipo`, `dcats`, `dnomes` e `aba=despesas` da URL são ignorados (a URL não é reescrita).
+- Testes pré-existentes de Despesas (Lançar e Equipe) usavam um "gerente" operando despesas de atendentes, o que a 0009 proíbe. O usuário logado deles passou a ser admin.
+- O fake de categorias ganhou `setVisao({ uid, admin, atendentes })`, que simula a RLS da 0009 (filtro de leitura, 42501 na troca do flag e insert do gerente forçado como visível).
+- Não foi possível verificar contra o banco real aqui: a verificação fica na T011.6.
+
 ## Critérios de aceite
 - [ ] Logo após a migration, o gerente vê as categorias do atendente vazias e a Equipe com R$ 0,00 para ele, enquanto o admin vê tudo.
 - [ ] O atendente libera "Pizza": o gerente passa a ver Pizza, os lançamentos e o total dela, e o Sanduíche continua oculto.

@@ -10,6 +10,8 @@ import { NovoLancamentoForm } from './NovoLancamentoForm';
 
 type EntregasTabProps = {
   alvo: UsuarioAlvo;
+  /** Gerente vendo um atendente: só as categorias que ele liberou (spec 011). */
+  ehGerenteVendoAtendente?: boolean;
   data: string;
   hoje: string;
   onSavingChange: (saving: boolean) => void;
@@ -19,7 +21,13 @@ type EntregasTabProps = {
  * Lançar › Entregas (spec 004): steppers por categoria ativa e o que já foi lançado no dia.
  * O gestor pode lançar para outro atendente (spec 008): categorias, preços e lista são do alvo.
  */
-export function EntregasTab({ alvo, data, hoje, onSavingChange }: EntregasTabProps) {
+export function EntregasTab({
+  alvo,
+  ehGerenteVendoAtendente = false,
+  data,
+  hoje,
+  onSavingChange,
+}: EntregasTabProps) {
   const categorias = useCategorias(alvo.alvoId, { incluirInativas: false });
 
   let corpo: ReactNode;
@@ -48,11 +56,17 @@ export function EntregasTab({ alvo, data, hoje, onSavingChange }: EntregasTabPro
       <EmptyState
         icon={Tags}
         title={
-          alvo.isEu
-            ? 'Cadastre suas categorias para começar'
-            : `${alvo.alvoNome} ainda não tem categorias ativas`
+          ehGerenteVendoAtendente
+            ? `${alvo.alvoNome} ainda não liberou nenhuma categoria para você.`
+            : alvo.isEu
+              ? 'Cadastre suas categorias para começar'
+              : `${alvo.alvoNome} ainda não tem categorias ativas`
         }
-        description="Ex.: Sanduíche a R$ 2,50. Depois é só informar quantas entregas fez."
+        description={
+          ehGerenteVendoAtendente
+            ? 'Você também pode criar uma categoria para ele.'
+            : 'Ex.: Sanduíche a R$ 2,50. Depois é só informar quantas entregas fez.'
+        }
         action={
           <Link
             to={{ pathname: ROUTES.categorias, search: alvo.search }}

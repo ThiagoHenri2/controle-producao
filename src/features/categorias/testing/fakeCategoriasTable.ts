@@ -2,7 +2,10 @@
  * Tabela `categorias` em memória para testes (registrada no `fakeSupabase` via
  * `setTableHandler('categorias', ...)`). Simula as regras do banco que o front trata:
  * - `unique(user_id, nome)` diferenciando maiúsculas → erro 23505 (por dono);
- * - FK `restrict` de lançamentos → erro 23503 ao excluir categoria "em uso".
+ * - FK `restrict` de lançamentos → erro 23503 ao excluir categoria "em uso";
+ * - RLS da 0009 (spec 011), ligada por `setVisao(...)`: o gerente só enxerga as categorias
+ *   liberadas (`visivel_gerente`) dos seus atendentes e as próprias; só o dono/admin altera
+ *   `visivel_gerente` (senão 42501); a categoria que o gerente cria para o atendente nasce visível.
  */
 import type { Tables } from '@/lib/database.types';
 
@@ -22,14 +25,29 @@ export function makeCategoria(overrides: Partial<Categoria> = {}): Categoria {
     nome: 'Sanduíche',
     valor_unitario: 2.5,
     ativa: true,
+    visivel_gerente: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
   };
 }
 
+/** Quem está logado, para simular a RLS. `atendentes` = ids dos atendentes do gerente. */
+export type VisaoRls = { uid: string; admin?: boolean; atendentes?: readonly string[] };
+
 export function createFakeCategoriasTable() {
   let rows: Categoria[] = [];
+  let visao: VisaoRls | null = null;
+
+  const enxerga = (r: Categoria) =>
+    !visao ||
+    visao.admin === true ||
+    r.user_id === visao.uid ||
+    ((visao.atendentes ?? []).includes(r.user_id) && r.visivel_gerente);
+  const podeMudarVisibilidade = (r: Categoria) =>
+    !visao || visao.admin === true || r.user_id === visao.uid;
+  const erroVisibilidade = () =>
+    pgError('42501', 'Apenas o atendente pode alterar a visibilidade.');
   const emUso = new Set<string>();
   let gate: Promise<void> | null = null;
   let failNext: PgError | null = null;
@@ -60,7 +78,7 @@ export function createFakeCategoriasTable() {
     const orders: Order[] = [];
     const exec = () =>
       run<Categoria[]>(() => {
-        const list = rows.filter((r) => filters.every((f) => f(r)));
+        const list = rows.filter((r) => enxerga(r) && filters.every((f) => f(r)));
         list.sort((a, b) => {
           for (const { column, ascending } of orders) {
             const va = a[column];
@@ -114,6 +132,10 @@ export function createFakeCategoriasTable() {
                 ...input,
                 id: `cat-${seq++}`,
                 ativa: input.ativa ?? true,
+                visivel_gerente:
+                  visao && input.user_id && input.user_id !== visao.uid && !visao.admin
+                    ? true
+                    : (input.visivel_gerente ?? false),
               });
               rows.push(row);
               return { data: { ...row }, error: null };
@@ -122,23 +144,48 @@ export function createFakeCategoriasTable() {
       };
     },
     update: (patch: Partial<Categoria>) => ({
-      eq: (_column: 'id', id: string) => ({
-        select: () => ({
-          single: () =>
-            run<Categoria | null>(() => {
-              const row = rows.find((r) => r.id === id);
-              if (!row) return { data: null, error: pgError('PGRST116', 'no rows') };
-              if (patch.nome !== undefined && conflita(row.user_id, patch.nome, id)) {
-                return {
-                  data: null,
-                  error: pgError('23505', 'duplicate key value violates unique constraint'),
-                };
-              }
-              Object.assign(row, patch);
-              return { data: { ...row }, error: null };
-            }),
-        }),
-      }),
+      eq: (column: 'id' | 'user_id', value: string) => {
+        const alvos = () => rows.filter((r) => r[column] === value && enxerga(r));
+        const exec = () =>
+          run<null>(() => {
+            const lista = alvos();
+            if (
+              patch.visivel_gerente !== undefined &&
+              lista.some((r) => !podeMudarVisibilidade(r))
+            ) {
+              return { data: null, error: erroVisibilidade() };
+            }
+            lista.forEach((r) => Object.assign(r, patch));
+            return { data: null, error: null };
+          });
+        return {
+          select: () => ({
+            single: () =>
+              run<Categoria | null>(() => {
+                const row = alvos()[0];
+                if (!row) return { data: null, error: pgError('PGRST116', 'no rows') };
+                if (patch.visivel_gerente !== undefined && !podeMudarVisibilidade(row)) {
+                  return { data: null, error: erroVisibilidade() };
+                }
+                if (patch.nome !== undefined && conflita(row.user_id, patch.nome, row.id)) {
+                  return {
+                    data: null,
+                    error: pgError('23505', 'duplicate key value violates unique constraint'),
+                  };
+                }
+                Object.assign(row, patch);
+                return { data: { ...row }, error: null };
+              }),
+          }),
+          /** Update em lote sem `select()` (ex.: "Mostrar todas"). */
+          then<R1 = Result<null>, R2 = never>(
+            onfulfilled?: ((value: Result<null>) => R1 | PromiseLike<R1>) | null,
+            onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null,
+          ): Promise<R1 | R2> {
+            return exec().then(onfulfilled, onrejected);
+          },
+        };
+      },
     }),
     delete: () => ({
       eq: (_column: 'id', id: string) =>
@@ -158,6 +205,10 @@ export function createFakeCategoriasTable() {
     selects,
     get rows(): readonly Categoria[] {
       return rows;
+    },
+    /** Liga a simulação de RLS por papel (spec 011). `null` desliga. */
+    setVisao(v: VisaoRls | null) {
+      visao = v;
     },
     seed(list: Categoria[]) {
       rows = list.map((r) => ({ ...r }));
@@ -183,6 +234,7 @@ export function createFakeCategoriasTable() {
     },
     reset() {
       rows = [];
+      visao = null;
       emUso.clear();
       inserts.length = 0;
       selects.length = 0;

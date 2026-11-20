@@ -9,8 +9,16 @@ export type CategoriaInsert = {
   nome: string;
   valor_unitario: number;
   ativa?: boolean;
+  /**
+   * Visibilidade para o gerente (spec 011). Só o dono envia; o gerente que cria
+   * para o atendente NÃO envia (o banco força `true`).
+   */
+  visivel_gerente?: boolean;
 };
-export type CategoriaPatch = Pick<TablesUpdate<'categorias'>, 'nome' | 'valor_unitario' | 'ativa'>;
+export type CategoriaPatch = Pick<
+  TablesUpdate<'categorias'>,
+  'nome' | 'valor_unitario' | 'ativa' | 'visivel_gerente'
+>;
 
 export type ListCategoriasParams = { incluirInativas?: boolean };
 
@@ -40,6 +48,7 @@ export async function createCategoria(input: CategoriaInsert): Promise<Categoria
       nome: input.nome.trim(),
       valor_unitario: input.valor_unitario,
       ativa: input.ativa,
+      ...(input.visivel_gerente !== undefined && { visivel_gerente: input.visivel_gerente }),
     })
     .select()
     .single();
@@ -59,6 +68,18 @@ export async function updateCategoria(id: string, patch: CategoriaPatch): Promis
     .single();
   if (error) throw toCategoriaError(error, CATEGORIA_ERROR_MESSAGES.salvar);
   return data;
+}
+
+/**
+ * Mostra ou oculta TODAS as categorias do dono para o gerente (spec 011).
+ * Só o próprio atendente pode (o banco devolve 42501 ao gerente).
+ */
+export async function setVisibilidadeTodas(userId: string, visivel: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('categorias')
+    .update({ visivel_gerente: visivel })
+    .eq('user_id', userId);
+  if (error) throw toCategoriaError(error, CATEGORIA_ERROR_MESSAGES.visibilidade);
 }
 
 /** Exclui. Com lançamentos, o banco bloqueia (23503) → `CategoriaError` kind `em_uso`. */

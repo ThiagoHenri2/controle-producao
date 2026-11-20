@@ -14,6 +14,7 @@ import {
   deleteCategoria,
   listCategorias,
   listNomesCategorias,
+  setVisibilidadeTodas,
   updateCategoria,
   type Categoria,
 } from './api';
@@ -28,7 +29,11 @@ export type TipoCategoria = Aba;
  * Linha das telas de categorias: a de entrega tem `valor_unitario`; a de
  * despesa não (spec 009). `Categoria` e `CategoriaDespesa` são atribuíveis a ela.
  */
-export type CategoriaLista = CategoriaDespesa & { valor_unitario?: number | string };
+export type CategoriaLista = CategoriaDespesa & {
+  valor_unitario?: number | string;
+  /** Só nas categorias de entrega (spec 011). */
+  visivel_gerente?: boolean;
+};
 
 /**
  * Query keys de categorias. As listas são por dono (`userId`): o gestor vê as
@@ -135,8 +140,15 @@ export type NovaCategoriaVars = {
   nome: string;
   ativa?: boolean;
   valor_unitario?: number;
+  /** Só entregas, só o dono (spec 011). Omitido quando o gerente cria para o atendente. */
+  visivel_gerente?: boolean;
 };
-export type CategoriaListaPatch = { nome?: string; ativa?: boolean; valor_unitario?: number };
+export type CategoriaListaPatch = {
+  nome?: string;
+  ativa?: boolean;
+  valor_unitario?: number;
+  visivel_gerente?: boolean;
+};
 
 function semValor(): CategoriaError {
   return new CategoriaError('invalido', CATEGORIA_ERROR_MESSAGES.invalido);
@@ -145,10 +157,10 @@ function semValor(): CategoriaError {
 export function useCreateCategoria(tipo: TipoCategoria = 'entregas') {
   const invalidate = useInvalidateCategorias(tipo);
   return useMutation<CategoriaLista, CategoriaError, NovaCategoriaVars>({
-    mutationFn: async ({ user_id, nome, ativa, valor_unitario }) => {
+    mutationFn: async ({ user_id, nome, ativa, valor_unitario, visivel_gerente }) => {
       if (tipo === 'despesas') return createCategoriaDespesa({ user_id, nome, ativa });
       if (valor_unitario === undefined) throw semValor();
-      return createCategoria({ user_id, nome, ativa, valor_unitario });
+      return createCategoria({ user_id, nome, ativa, valor_unitario, visivel_gerente });
     },
     onSettled: (_res, _err, vars) => invalidate(vars.user_id),
   });
@@ -175,5 +187,51 @@ export function useDeleteCategoria(tipo: TipoCategoria = 'entregas') {
     mutationFn: ({ id }) =>
       tipo === 'despesas' ? deleteCategoriaDespesa(id) : deleteCategoria(id),
     onSettled: (_res, _err, vars) => invalidate(vars.userId),
+  });
+}
+
+export type ToggleVisibilidadeVars = { id: string; userId: string; visivel: boolean };
+type ListasSnapshot = Array<[readonly unknown[], Categoria[] | undefined]>;
+
+/**
+ * Liga/desliga "Visível para <gerente>" de uma categoria (spec 011), com
+ * atualização otimista das listas do dono e rollback se o servidor recusar.
+ */
+export function useToggleVisibilidade() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    CategoriaLista,
+    CategoriaError,
+    ToggleVisibilidadeVars,
+    { antes: ListasSnapshot }
+  >({
+    mutationFn: ({ id, visivel }) => updateCategoria(id, { visivel_gerente: visivel }),
+    onMutate: async ({ id, userId, visivel }) => {
+      await queryClient.cancelQueries({ queryKey: categoriaKeys.user(userId) });
+      const antes = queryClient.getQueriesData<Categoria[]>({
+        queryKey: categoriaKeys.user(userId),
+      });
+      queryClient.setQueriesData<Categoria[]>({ queryKey: categoriaKeys.user(userId) }, (lista) =>
+        lista?.map((c) => (c.id === id ? { ...c, visivel_gerente: visivel } : c)),
+      );
+      return { antes };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.antes.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    },
+    onSettled: (_res, _err, vars) =>
+      queryClient.invalidateQueries({ queryKey: categoriaKeys.user(vars.userId) }),
+  });
+}
+
+export type VisibilidadeTodasVars = { userId: string; visivel: boolean };
+
+/** "Mostrar todas" / "Ocultar todas" ao gerente (spec 011): update em lote das categorias do dono. */
+export function useSetVisibilidadeTodas() {
+  const queryClient = useQueryClient();
+  return useMutation<void, CategoriaError, VisibilidadeTodasVars>({
+    mutationFn: ({ userId, visivel }) => setVisibilidadeTodas(userId, visivel),
+    onSettled: (_res, _err, vars) =>
+      queryClient.invalidateQueries({ queryKey: categoriaKeys.user(vars.userId) }),
   });
 }

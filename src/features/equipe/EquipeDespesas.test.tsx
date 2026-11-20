@@ -28,7 +28,9 @@ vi.mock('@/lib/supabase', async () => ({
   supabase: (await import('@/test/supabaseMock')).fakeSupabase.client,
 }));
 
-const MARIA = makeProfile({ id: 'u-maria', nome: 'Maria', username: 'maria', role: 'gerente' });
+// Admin: o gerente não vê despesas de atendentes (spec 011).
+
+const MARIA = makeProfile({ id: 'u-maria', nome: 'Maria', username: 'maria', role: 'admin' });
 const PERFIS: Perfil[] = [
   { id: 'u-maria', nome: 'Maria', username: 'maria', role: 'gerente', ativo: true },
   { id: 'u-joao', nome: 'João', username: 'joao', role: 'user', ativo: true },

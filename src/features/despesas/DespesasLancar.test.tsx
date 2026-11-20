@@ -26,7 +26,9 @@ vi.mock('@/lib/supabase', async () => ({
 }));
 
 const EU = makeProfile({ id: 'user-1', nome: 'João', username: 'joao' });
-const MARIA = makeProfile({ id: 'u-maria', nome: 'Maria', username: 'maria', role: 'gerente' });
+// Admin: o gerente não vê nem lança despesas de atendentes (spec 011).
+
+const MARIA = makeProfile({ id: 'u-maria', nome: 'Maria', username: 'maria', role: 'admin' });
 const ANA = makeProfile({ id: 'u-ana', nome: 'Ana', username: 'ana' });
 
 let logado = EU.id;
