@@ -49,7 +49,7 @@ index lancamentos (user_id, data)
 
 ### Triggers e funções
 - `set_updated_at()` em `categorias` (before update).
-- `lancamentos_preco_snapshot()` (before insert): se `valor_unitario` vier nulo, copia de `categorias.valor_unitario`. Também valida que a categoria pertence ao mesmo `user_id` e está `ativa`.
+- `lancamentos_preco_snapshot()` (before insert **e** before update of `categoria_id, user_id`): se `valor_unitario` vier nulo no insert, copia de `categorias.valor_unitario`. Também valida que a categoria pertence ao mesmo `user_id` e está `ativa`. No update ele só revalida quando a categoria ou o usuário mudam, e nunca recopia o preço. Isso impede repontar um lançamento para a categoria de outro usuário (a FK sozinha não impede). Erros: `23503` "Categoria inválida…" e `23514` "Categoria inativa…".
 - `is_admin()`: `security definer`, retorna `exists(select 1 from profiles where id = auth.uid() and role = 'admin' and ativo)`.
 - `is_ativo()`: `security definer`, retorna se o perfil do `auth.uid()` está ativo.
 
