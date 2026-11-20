@@ -17,28 +17,60 @@ export type Resumo = {
   quantidadeTotal: number;
 };
 
-export async function fetchResumoPorCategoria(de: string, ate: string): Promise<ResumoCategoria[]> {
-  const { data, error } = await supabase.rpc('resumo_por_categoria', { p_de: de, p_ate: ate });
+/**
+ * Filtro de categorias enviado às RPCs: `null` = todas (o parâmetro é omitido e
+ * o banco usa o default `null`); um array = só essas categorias.
+ */
+export type FiltroCategorias = readonly string[] | null;
+
+type ResumoArgs = Functions['resumo_por_categoria']['Args'];
+
+function resumoArgs(de: string, ate: string, categorias: FiltroCategorias): ResumoArgs {
+  const args: ResumoArgs = { p_de: de, p_ate: ate };
+  if (categorias) args.p_categorias = [...categorias];
+  return args;
+}
+
+export async function fetchResumoPorCategoria(
+  de: string,
+  ate: string,
+  categorias: FiltroCategorias = null,
+): Promise<ResumoCategoria[]> {
+  const { data, error } = await supabase.rpc(
+    'resumo_por_categoria',
+    resumoArgs(de, ate, categorias),
+  );
   if (error) throw toRelatorioError(error);
   return data ?? [];
 }
 
-export async function fetchResumoPorDia(de: string, ate: string): Promise<ResumoDia[]> {
-  const { data, error } = await supabase.rpc('resumo_por_dia', { p_de: de, p_ate: ate });
+export async function fetchResumoPorDia(
+  de: string,
+  ate: string,
+  categorias: FiltroCategorias = null,
+): Promise<ResumoDia[]> {
+  const { data, error } = await supabase.rpc('resumo_por_dia', resumoArgs(de, ate, categorias));
   if (error) throw toRelatorioError(error);
   return data ?? [];
 }
 
-/** Chama as duas RPCs em paralelo. Valores e total vêm prontos do banco (RLS por usuário). */
-export async function fetchResumo(de: string, ate: string): Promise<Resumo> {
-  const [categorias, dias] = await Promise.all([
-    fetchResumoPorCategoria(de, ate),
-    fetchResumoPorDia(de, ate),
+/**
+ * Chama as duas RPCs em paralelo. Valores e total vêm prontos do banco (RLS por
+ * usuário), já filtrados pelas categorias quando houver filtro.
+ */
+export async function fetchResumo(
+  de: string,
+  ate: string,
+  categorias: FiltroCategorias = null,
+): Promise<Resumo> {
+  const [porCategoria, dias] = await Promise.all([
+    fetchResumoPorCategoria(de, ate, categorias),
+    fetchResumoPorDia(de, ate, categorias),
   ]);
   return {
-    categorias,
+    categorias: porCategoria,
     dias,
-    totalGeral: Number(categorias[0]?.total_geral ?? 0),
-    quantidadeTotal: categorias.reduce((soma, c) => soma + Number(c.quantidade), 0),
+    totalGeral: Number(porCategoria[0]?.total_geral ?? 0),
+    quantidadeTotal: porCategoria.reduce((soma, c) => soma + Number(c.quantidade), 0),
   };
 }

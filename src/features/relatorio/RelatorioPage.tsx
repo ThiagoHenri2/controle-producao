@@ -1,26 +1,34 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, BarChart3, Plus } from 'lucide-react';
+import { AlertCircle, BarChart3, FilterX, Plus } from 'lucide-react';
 import { Button, EmptyState } from '@/components/ui';
 import { ROUTES } from '@/routes/navigation';
+import { CategoriasFiltroButton } from './components/CategoriasFiltroButton';
+import { CategoriasSheet } from './components/CategoriasSheet';
 import { PeriodoChips } from './components/PeriodoChips';
 import { PeriodoSheet } from './components/PeriodoSheet';
 import { RelatorioSkeleton } from './components/RelatorioSkeleton';
 import { ResumoCategorias } from './components/ResumoCategorias';
 import { ResumoDias } from './components/ResumoDias';
 import { TotalCard } from './components/TotalCard';
-import { usePeriodoFiltro, useResumo } from './hooks';
+import { FILTRO_MESSAGES, rotuloFiltro } from './filtroCategorias';
+import { useCategoriasFiltro, usePeriodoFiltro, useResumo } from './hooks';
 import { formatIntervalo } from './periodos';
 
-/** Relatório (spec 005): total do período, por categoria e por dia. */
+/** Relatório (spec 005): total do período, por categoria e por dia, com filtro de categorias. */
 export function RelatorioPage() {
   const navigate = useNavigate();
   const { periodo, hoje, escolherRapido, escolherPersonalizado } = usePeriodoFiltro();
+  const filtro = useCategoriasFiltro();
   const { data, isPending, isError, error, refetch, isRefetching } = useResumo(
     periodo.de,
     periodo.ate,
+    filtro.selecionadas,
+    { enabled: filtro.pronto },
   );
   const [sheetAberto, setSheetAberto] = useState(false);
+  const [filtroAberto, setFiltroAberto] = useState(false);
+  const filtrando = filtro.selecionadas !== null;
 
   let conteudo;
   if (isPending) {
@@ -34,6 +42,19 @@ export function RelatorioPage() {
         action={
           <Button fullWidth variant="secondary" loading={isRefetching} onClick={() => refetch()}>
             Tentar de novo
+          </Button>
+        }
+      />
+    );
+  } else if (data.categorias.length === 0 && filtrando) {
+    conteudo = (
+      <EmptyState
+        icon={FilterX}
+        title={FILTRO_MESSAGES.vazio}
+        description="Marque outras categorias ou escolha outro período."
+        action={
+          <Button fullWidth variant="secondary" onClick={filtro.limpar}>
+            Limpar filtro
           </Button>
         }
       />
@@ -58,7 +79,19 @@ export function RelatorioPage() {
   } else {
     conteudo = (
       <div className="flex flex-col gap-5">
-        <TotalCard totalGeral={data.totalGeral} quantidadeTotal={data.quantidadeTotal} />
+        <TotalCard
+          totalGeral={data.totalGeral}
+          quantidadeTotal={data.quantidadeTotal}
+          filtro={
+            filtro.selecionadas
+              ? {
+                  selecionadas: filtro.selecionadas.length,
+                  total: filtro.categorias.length,
+                  onLimpar: filtro.limpar,
+                }
+              : undefined
+          }
+        />
         <ResumoCategorias categorias={data.categorias} totalGeral={data.totalGeral} />
         {data.dias.length > 0 && <ResumoDias dias={data.dias} />}
       </div>
@@ -79,6 +112,13 @@ export function RelatorioPage() {
         >
           {formatIntervalo(periodo)}
         </p>
+        {filtro.categorias.length > 0 && (
+          <CategoriasFiltroButton
+            rotulo={rotuloFiltro(filtro.selecionadas, filtro.categorias)}
+            ativo={filtrando}
+            onClick={() => setFiltroAberto(true)}
+          />
+        )}
       </div>
 
       {conteudo}
@@ -91,6 +131,18 @@ export function RelatorioPage() {
           onAplicar={(intervalo) => {
             escolherPersonalizado(intervalo);
             setSheetAberto(false);
+          }}
+        />
+      )}
+
+      {filtroAberto && (
+        <CategoriasSheet
+          categorias={filtro.categorias}
+          selecionadas={filtro.selecionadas}
+          onClose={() => setFiltroAberto(false)}
+          onAplicar={(ids) => {
+            filtro.aplicar(ids);
+            setFiltroAberto(false);
           }}
         />
       )}

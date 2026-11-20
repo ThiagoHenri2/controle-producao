@@ -58,6 +58,28 @@ describe('fetchResumo', () => {
     expect(r.dias).toHaveLength(1);
   });
 
+  it('envia p_categorias só quando há filtro', async () => {
+    fakeSupabase.setRpcHandler('resumo_por_categoria', () => ({
+      data: [
+        linha({ categoria_id: 'c2', nome: 'Pizza', quantidade: 20, valor: 100, total_geral: 100 }),
+      ],
+      error: null,
+    }));
+    fakeSupabase.setRpcHandler('resumo_por_dia', () => ({ data: [], error: null }));
+
+    const r = await fetchResumo('2026-11-01', '2026-11-30', ['c2']);
+    const filtrado = { p_de: '2026-11-01', p_ate: '2026-11-30', p_categorias: ['c2'] };
+    expect(fakeSupabase.rpc).toHaveBeenCalledWith('resumo_por_categoria', filtrado);
+    expect(fakeSupabase.rpc).toHaveBeenCalledWith('resumo_por_dia', filtrado);
+    expect(r.totalGeral).toBe(100);
+
+    fakeSupabase.rpc.mockClear();
+    await fetchResumo('2026-11-01', '2026-11-30', null);
+    for (const [, args] of fakeSupabase.rpc.mock.calls) {
+      expect(args).not.toHaveProperty('p_categorias');
+    }
+  });
+
   it('sem linhas: total 0', async () => {
     fakeSupabase.setRpcHandler('resumo_por_categoria', () => ({ data: [], error: null }));
     fakeSupabase.setRpcHandler('resumo_por_dia', () => ({ data: [], error: null }));

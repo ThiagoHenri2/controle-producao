@@ -4,6 +4,8 @@
  *
  * Soma em centavos inteiros e devolve `numeric` como number (como o PostgREST),
  * com a mesma ordenação e a mesma validação de período (erro 22023) da migration 0003.
+ * Aceita `p_categorias` (migration 0005): omitido/null = todas; array = só essas
+ * (o `total_geral` e o resumo por dia também ficam filtrados).
  */
 import { differenceInCalendarDays } from 'date-fns';
 import { parseISODate } from '@/lib/format';
@@ -20,7 +22,12 @@ export type FakeLancamento = {
   valor_unitario_centavos: number;
 };
 
-type Args = { p_de?: unknown; p_ate?: unknown };
+type Args = { p_de?: unknown; p_ate?: unknown; p_categorias?: unknown };
+
+/** Chamada válida recebida. `categorias` só aparece quando `p_categorias` veio como array. */
+export type FakeResumoCall = { fn: string; de: string; ate: string; categorias?: string[] };
+
+type Filtro = { de: string; ate: string; categorias: string[] | null };
 type RpcRegistry = { setRpcHandler: (fn: string, handler: RpcHandler) => void };
 
 const pgError = (code: string, message: string) => ({ code, message });
@@ -29,9 +36,9 @@ export function createFakeResumo() {
   let lancamentos: FakeLancamento[] = [];
   let gate: Promise<void> | null = null;
   let failNext: { code: string; message: string } | null = null;
-  const calls: Array<{ fn: string; de: string; ate: string }> = [];
+  const calls: FakeResumoCall[] = [];
 
-  function validar(args: Args): { de: string; ate: string } | RpcResult {
+  function validar(args: Args): Filtro | RpcResult {
     const de = typeof args.p_de === 'string' ? args.p_de : '';
     const ate = typeof args.p_ate === 'string' ? args.p_ate : '';
     if (!de || !ate) return { data: null, error: pgError('22023', 'Período inválido.') };
@@ -50,10 +57,15 @@ export function createFakeResumo() {
         error: pgError('22023', 'Período inválido: o intervalo máximo é de 366 dias.'),
       };
     }
-    return { de, ate };
+    const cats = args.p_categorias;
+    if (cats === undefined || cats === null) return { de, ate, categorias: null };
+    if (!Array.isArray(cats) || !cats.every((c): c is string => typeof c === 'string')) {
+      return { data: null, error: pgError('22P02', 'invalid input syntax for type uuid') };
+    }
+    return { de, ate, categorias: [...cats] };
   }
 
-  async function run(fn: string, args: Args, compute: (de: string, ate: string) => unknown) {
+  async function run(fn: string, args: Args, compute: (filtro: Filtro) => unknown) {
     if (gate) await gate;
     if (failNext) {
       const error = failNext;
@@ -62,16 +74,22 @@ export function createFakeResumo() {
     }
     const v = validar(args);
     if ('error' in v) return v;
-    calls.push({ fn, ...v });
-    return { data: compute(v.de, v.ate), error: null };
+    calls.push(
+      v.categorias
+        ? { fn, de: v.de, ate: v.ate, categorias: v.categorias }
+        : { fn, de: v.de, ate: v.ate },
+    );
+    return { data: compute(v), error: null };
   }
 
-  const noPeriodo = (de: string, ate: string) =>
-    lancamentos.filter((l) => l.data >= de && l.data <= ate);
+  const filtrados = ({ de, ate, categorias }: Filtro) =>
+    lancamentos.filter(
+      (l) => l.data >= de && l.data <= ate && (!categorias || categorias.includes(l.categoria_id)),
+    );
 
-  function porCategoria(de: string, ate: string): ResumoCategoria[] {
+  function porCategoria(filtro: Filtro): ResumoCategoria[] {
     const map = new Map<string, { nome: string; ativa: boolean; qtd: number; cent: number }>();
-    for (const l of noPeriodo(de, ate)) {
+    for (const l of filtrados(filtro)) {
       const acc = map.get(l.categoria_id) ?? {
         nome: l.nome,
         ativa: l.ativa ?? true,
@@ -95,9 +113,9 @@ export function createFakeResumo() {
       }));
   }
 
-  function porDia(de: string, ate: string): ResumoDia[] {
+  function porDia(filtro: Filtro): ResumoDia[] {
     const map = new Map<string, { qtd: number; cent: number }>();
-    for (const l of noPeriodo(de, ate)) {
+    for (const l of filtrados(filtro)) {
       const acc = map.get(l.data) ?? { qtd: 0, cent: 0 };
       acc.qtd += l.quantidade;
       acc.cent += l.quantidade * l.valor_unitario_centavos;
@@ -119,7 +137,7 @@ export function createFakeResumo() {
       lancamentos = list.map((l) => ({ ...l }));
     },
     /** Chamadas válidas recebidas (para conferir o período enviado). */
-    get calls(): ReadonlyArray<{ fn: string; de: string; ate: string }> {
+    get calls(): ReadonlyArray<FakeResumoCall> {
       return calls;
     },
     /** A próxima chamada falha com este erro. */
